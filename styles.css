@@ -5,6 +5,7 @@
   background:#f5f7f6;
   font-synthesis:none;
   font-size:16px;
+  scrollbar-gutter:stable;
   --green:#173e33;
   --mint:#e1f2df;
   --muted:#687b74;
@@ -606,8 +607,7 @@ footer {
   padding:17px 20px 23px
 }
 .practice-layout {
-  max-width:850px;
-  margin:0 auto
+  max-width:850px
 }
 .configuration {
   padding:29px
@@ -732,7 +732,7 @@ footer {
 }
 .records-grid {
   display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(min(100%, 246px),1fr));
+  grid-template-columns:repeat(auto-fill,minmax(min(100%, 246px),1fr));
   gap:16px;
   margin-top:16px;
 }
@@ -922,6 +922,9 @@ footer {
   justify-content:space-between;
   margin-top:24px;
   gap:16px
+}
+.question-bottom > .button {
+  margin-left:auto
 }
 .question-hint {
   color:var(--muted);

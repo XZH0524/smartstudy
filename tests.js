@@ -152,7 +152,7 @@
     throws(() => Core.advanceSession(state, questions));
   });
 
-  await test('批改正确保留原状态，同题重复提交只计一次', () => {
+  await test('提交答案后正确判分且保留原状态，同题重复提交只计一次', () => {
     const original = start();
     const graded = answerCurrent(original);
     equal(original.attempts.length, 0);
@@ -200,7 +200,7 @@
     equal(Core.revealHint(dx, questions), dx);
   });
 
-  await test('数学诊断恰有 10 题、每领域 2 题，未完成不生成推荐', () => {
+  await test('数学起点测试恰有 10 题、每领域 2 题，未完成不生成推荐', () => {
     const ids = Learning.diagnosticIds('math');
     equal(ids.length, 10);
     for (const topic of topicsBySubject.math) equal(ids.filter(id => byId.get(id).topic === topic).length, 2);
@@ -208,7 +208,7 @@
     equal(Learning.latestPlacement(state, 'math'), null);
   });
 
-  await test('数学诊断可分别推荐代数 L4、几何 L2 和其他领域 L1', () => {
+  await test('数学起点测试可分别推荐代数 L4、几何 L2 和其他领域 L1', () => {
     const state = placement('math', item => item.topic === 'algebra' || (item.topic === 'geometry' && item.level === 'L2'));
     const result = Learning.latestPlacement(state, 'math');
     equal(result.topics.algebra.level, 'L4');
@@ -274,7 +274,7 @@
     equal(Learning.mathProfile(state).functions.level, 'L5');
   });
 
-  await test('重新诊断从最近的结果出发，保留此前的作答', () => {
+  await test('重做起点测试后使用最近的结果，保留此前的作答', () => {
     const state = answerPractice(Core.createState(), mathIds('algebra', 'L2'), Array(5).fill(true), new Date(2026, 3, 1, 9).toISOString());
     const retested = placement('math', item => item.topic === 'geometry', state);
     equal(retested.attempts.length, 15);
@@ -282,7 +282,7 @@
     equal(Learning.mathProfile(retested).geometry.level, 'L4');
   });
 
-  await test('英语短测为 12 题且只给 A1–B2 起点，手选可用 C2', () => {
+  await test('英语起点测试为 12 题且只给 A1–B2 起点，手选可用 C2', () => {
     equal(Learning.diagnosticIds('english').length, 12);
     const state = placement('english', () => true);
     equal(Learning.latestPlacement(state, 'english').level, 'B2');
@@ -394,6 +394,10 @@
     return found;
   }
 
+  function headingLeft() {
+    return element('#main > .page-heading:first-child h1').getBoundingClientRect().left;
+  }
+
   function click(selector) {
     const target = element(selector);
     assert(!target.disabled, `Disabled ${selector}`);
@@ -460,33 +464,59 @@
   }
 
   await resetUi();
-  await test('新用户首页显示真实零记录，语言切换更新 EachVeya 品牌与导航', () => {
+  await test('首页说明平台面向中学生，语言切换更新介绍、品牌和导航', () => {
     equal(document.documentElement.lang, 'zh-CN');
     assert(element('.stats-grid').textContent.includes('暂无数据'));
     equal(element('#brand').getAttribute('aria-label'), 'EachVeya 学验共途');
     assert(!element('#brand-local-name').hidden);
     assert(document.title.includes('EachVeya 学验共途'));
+    equal(element('main h1').textContent, 'EachVeya 学验共途');
+    assert(element('.page-heading .subtitle').textContent.includes('中学生的英语和数学练习'));
+    assert(element('.hero-copy p').textContent.includes('答案解析'));
     change('language', 'en');
     equal(document.documentElement.lang, 'en');
     equal(element('#brand').getAttribute('aria-label'), 'EachVeya');
     assert(element('#brand-local-name').hidden);
     equal(document.title, 'Overview · EachVeya');
     assert(element('#navigation').textContent.includes('Progress'));
+    equal(element('main h1').textContent, 'EachVeya');
+    assert(element('.page-heading .subtitle').textContent.includes('English and mathematics practice for secondary school students'));
+    assert(element('.hero-copy p').textContent.includes('multiple-choice questions'));
     fitsViewport();
   });
 
-  await test('数学首次进入显示诊断入口，完成 10 道后展示分领域起点', async () => {
+  await test('学习记录为空时只显示一条提示，并与首页标题左对齐', async () => {
+    const left = headingLeft();
+    await go('records', '#main > .records-note');
+    equal(headingLeft(), left);
+    equal(element('#main > .records-note').textContent, 'Not started yet');
+    assert(!document.querySelector('.records-section, .topic-record'));
+    change('language', 'zh');
+    equal(element('#main > .records-note').textContent, '还没开始');
+    change('language', 'en');
+    fitsViewport();
+  });
+
+  await test('数学起点测试完成 10 题后显示分领域推荐，设置、作答和结果标题对齐', async () => {
+    const left = headingLeft();
     await openSubject('math');
+    equal(headingLeft(), left);
+    equal(element('#placement-heading').textContent, 'Placement check');
     assert(document.querySelector('[data-action="skip-placement"]'));
     assert(!document.querySelector('#difficulty'));
     click('[data-action="diagnostic"]');
     await waitElement('#question-title');
+    equal(headingLeft(), left);
+    equal(element('.page-heading .eyebrow').textContent, 'Placement check');
     equal(read().active.mode, 'diagnostic');
     equal(read().active.questionIds.length, 10);
     assert(!document.querySelector('[data-action="hint"]'));
     await answerUi(false);
     assert(!document.querySelector('.answer-line'));
+    assert(element('.diagnostic-feedback').textContent.includes('after the placement check'));
     await finishQuestions(item => item.topic === 'algebra' || (item.topic === 'geometry' && item.level === 'L2'));
+    equal(headingLeft(), left);
+    equal(element('main h1').textContent, 'Placement check complete');
     equal(read().sessions.at(-1).mode, 'diagnostic');
     equal(document.querySelectorAll('.placement-result li').length, 5);
     assert(element('.placement-result').textContent.includes('L4'));
@@ -500,11 +530,12 @@
     await go('records', '.records-grid');
     const algebra = element('.topic-record[data-topic="algebra"]');
     const geometry = element('.topic-record[data-topic="geometry"]');
-    assert(algebra.textContent.includes('Placement start L4'));
-    assert(geometry.textContent.includes('Placement start L2'));
+    assert(algebra.textContent.includes('Placement check suggests L4'));
+    assert(geometry.textContent.includes('Placement check suggests L2'));
     assert(algebra.textContent.includes('2/2 correct'));
-    assert(element('.topic-record[data-topic="grammar"]').textContent.includes('No answers yet'));
-    equal(document.querySelectorAll('.topic-record').length, 8);
+    equal(element('#english-records').closest('section').querySelector('.records-note').textContent, 'Not started yet');
+    equal(document.querySelectorAll('.topic-record').length, 5);
+    assert(!algebra.textContent.includes('0/5'));
     fitsViewport();
   });
 
@@ -537,6 +568,7 @@
     assert([...document.querySelectorAll('.option')].every(option => option.disabled));
     change('language', 'zh');
     assert(element('.feedback').textContent.includes('答案解析'));
+    equal(element('#feedback-title').textContent, '这题答错了。');
     fitsViewport();
   });
 
@@ -578,7 +610,8 @@
     fitsViewport();
   });
 
-  await test('英语短测完成后显示 B2 起点，错题列表提供技能推荐', async () => {
+  await test('英语起点测试完成后显示 B2 起点，错题列表提供技能推荐', async () => {
+    equal(element('#placement-heading').textContent, 'Placement check');
     click('[data-action="diagnostic"]');
     await waitElement('#question-title');
     equal(read().active.questionIds.length, 12);
@@ -606,6 +639,22 @@
     equal(read().attempts.length, total);
   });
 
+  await test('有作答的知识点才显示卡片，重复作答计次数且不重复累计升降级依据', async () => {
+    await resetUi();
+    const ids = mathIds('algebra', 'L2', 1);
+    const at = new Date().toISOString();
+    const first = answerPractice(Core.createState(), ids, [false], at);
+    const saved = answerPractice(first, ids, [true], at);
+    Core.saveState(localStorage, key, saved);
+    replayStorage(key);
+    await go('records', '.topic-record');
+    equal(document.querySelectorAll('.topic-record').length, 1);
+    const algebra = element('.topic-record[data-topic="algebra"]');
+    assert(algebra.textContent.includes('累计作答 2 次，答对 1 次'));
+    assert(algebra.textContent.includes('1/5 道有效练习题'));
+    fitsViewport();
+  });
+
   await test('页面直接读取 v1 学习记录，下一次保存写入独立的新版键', async () => {
     await resetUi();
     const payload = JSON.stringify(oldRecord());
@@ -623,12 +672,16 @@
     await go('mistakes', '.mistake-list');
     equal(document.querySelectorAll('.mistake-card').length, 1);
     assert(element('.mistake-card').textContent.includes('school every day'));
+    await go('records', '.records-grid');
+    assert(element('.topic-record[data-topic="grammar"]').textContent.includes('累计作答 1 次，答对 0 次'));
+    assert(!element('.topic-record[data-topic="algebra"]').querySelector('.tag, .field-help'));
     fitsViewport();
   });
 
-  await test('跳过数学诊断会记住选择，但仍可从设置打开诊断', async () => {
+  await test('跳过数学起点测试会记住选择，仍可从练习设置打开测试', async () => {
     await resetUi();
     await openSubject('math');
+    equal(element('#placement-heading').textContent, '起点测试');
     click('[data-action="skip-placement"]');
     assert(element('#difficulty'));
     equal(read().preferences.mathPlacementDeferred, true);

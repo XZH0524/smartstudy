@@ -13,14 +13,14 @@
     home: ['学习主页', 'Overview'], practice: ['开始练习', 'Practice'], mistakes: ['错题复习', 'Mistakes'], records: ['学习记录', 'Progress'],
     skip: ['跳至主要内容', 'Skip to main content'], navigation: ['主导航', 'Main navigation'], language: ['界面语言', 'Interface language'],
     brand: [`${brandName} 学验共途`, brandName],
-    metaDescription: [`${brandName} 学验共途。让每位学生练习英语和数学，检验自己的理解。`,
-      `${brandName} gives every student a place to practise English and mathematics and check their understanding.`],
+    metaDescription: [`${brandName} 学验共途是面向全球中学生的英语和数学练习平台，提供答案解析和错题复习。`,
+      `${brandName} offers English and mathematics practice for secondary school students, with answer explanations and mistake review.`],
     local: ['学习记录保存在此浏览器', 'Study data stays in this browser'],
     disciplines: ['英语与数学', 'English & mathematics'],
-    welcome: ['每一天，进步一点。', 'A little progress, every day.'], welcomeSub: ['从一个小练习开始，让知识真正成为你的。', 'A short practice today. A little more confidence tomorrow.'],
-    workspace: ['我的学习空间', 'Your learning space'], heroTitle: ['人人都有机会学习和自测。', 'A place for every learner.'],
-    heroText: ['练习英语或数学，看看哪些已经掌握，哪些还需要再练。', 'Practise English or mathematics and see what you understand and where to practise next.'],
-    quickStart: ['开始今日练习', 'Start a practice'], resume: ['继续上次练习', 'Continue practice'], answered: ['累计作答', 'Answers submitted'], accuracy: ['作答正确率', 'Answer accuracy'],
+    welcomeSub: ['面向全球中学生的英语和数学练习平台。', 'English and mathematics practice for secondary school students around the world.'],
+    workspace: ['练习概览', 'Practice overview'], heroTitle: ['选择知识点和难度', 'Choose a topic and level'],
+    heroText: ['做选择题、查看答案解析，并复习答错的题目。', 'Answer multiple-choice questions, read the explanations and revisit mistakes.'],
+    resume: ['继续上次练习', 'Continue practice'], answered: ['累计作答', 'Answers submitted'], accuracy: ['作答正确率', 'Answer accuracy'],
     pending: ['待复习错题', 'Mistakes to revisit'], questionsUnit: ['题', 'questions'], noData: ['暂无数据', 'No data yet'], subjects: ['选择你的科目', 'Choose your subject'],
     available: ['{n} 个科目可练习', '{n} subjects ready to explore'], questionBank: ['{n} 道练习题', '{n} practice questions'], coverage: ['累计作答 {n} 次', '{n} answers submitted'],
     start: ['开始练习', 'Start practice'], lastWeek: ['最近 7 天', 'The last 7 days'], activity: ['每日作答', 'Daily answers'], moreSubjects: ['更多探索，即将开启', 'More to explore, soon'],
@@ -34,18 +34,18 @@
     mathScale: ['L1 为入门，L5 为挑战。等级按知识点分别推荐。', 'L1 is the starting tier and L5 is the most challenging. Each topic has its own recommendation.'],
     curriculumPlan: ['课程体系规划', 'Curriculum plans'],
     curriculumStatus: ['第一版提供通用数学练习，以下课程专项题库待开发。', 'This release offers general mathematics. Curriculum-specific question banks are planned.'],
-    diagnosticMode: ['能力诊断', 'Placement check'], mathDiagnostic: ['数学起点诊断', 'Mathematics placement'],
-    englishDiagnostic: ['英语起点短测', 'English placement'],
+    diagnosticMode: ['起点测试', 'Placement check'],
     mathDiagnosticInfo: ['10 道题覆盖五个领域，帮你分别找到练习起点。', 'Try 10 questions across five domains to find a starting point for each one.'],
     englishDiagnosticInfo: ['12 道词汇、语法和阅读选择题，推荐 A1–B2 的练习起点。', 'Try 12 vocabulary, grammar and reading questions for an A1–B2 practice starting point.'],
     diagnosticReadyMath: ['已有各领域的起点推荐，之后的练习会继续调整。', 'You have starting recommendations by domain. Practice helps refine them.'],
-    diagnosticReadyEnglish: ['短测推荐从 {level} 开始练习。也可以手选 A1–C2。', 'The check suggests starting at {level}. You can also choose A1–C2 yourself.'],
-    startDiagnostic: ['开始短测', 'Start placement check'], retakeDiagnostic: ['重新测试', 'Retake check'],
-    skipPlacement: ['跳过诊断，手动选题', 'Skip check and choose practice'],
-    diagnosticSubmitted: ['答案已记录。完成短测后可查看解析。', 'Answer recorded. Explanations are available after the check.'],
-    diagnosticComplete: ['起点推荐已生成', 'Your starting recommendations'],
+    diagnosticReadyEnglish: ['起点测试建议从 {level} 开始练习。也可以手选 A1–C2。', 'The placement check suggests starting at {level}. You can also choose A1–C2 yourself.'],
+    startDiagnostic: ['开始起点测试', 'Start placement check'], retakeDiagnostic: ['重做起点测试', 'Retake placement check'],
+    skipPlacement: ['跳过起点测试', 'Skip placement check'],
+    diagnosticSubmitted: ['答案已提交。完成起点测试后可查看解析。', 'Answer submitted. You can review the explanations after the placement check.'],
+    diagnosticFinished: ['起点测试完成', 'Placement check complete'],
+    diagnosticComplete: ['推荐的练习起点', 'Recommended starting levels'],
     diagnosticCaution: ['结果仅用于选择练习起点。', 'These results suggest practice starting points.'],
-    cefrScope: ['等级是选择题的练习标签，短测结果不能代表完整的 CEFR 能力。', 'CEFR levels label practice items. This short quiz does not assess the full range of CEFR skills.'],
+    cefrScope: ['CEFR 等级用于标注练习难度。起点测试仅涵盖词汇、语法和阅读选择题。', 'CEFR levels label practice difficulty. The placement check covers multiple-choice vocabulary, grammar and reading questions.'],
     cefrTrack: ['通用英语（CEFR）', 'General English (CEFR)'], ieltsTrack: ['雅思备考', 'IELTS preparation'],
     ieltsTarget: ['雅思目标分数', 'IELTS target band'], noTarget: ['暂不设置', 'No target set'],
     ieltsStatus: ['专项题库和模拟评分尚未开放。目标分数只作为你的备考计划。', 'Exam practice and mock scoring are planned. The band you select is your personal target.'],
@@ -53,15 +53,14 @@
     practiceTopic: ['练这个知识点', 'Practise this topic'], recordTitle: ['学习记录', 'Learning progress'],
     recordSubtitle: ['按知识点查看练习起点、作答表现和最近两周的记录。', 'See practice levels, answers and the last two weeks of activity by topic.'],
     evidenceNote: ['数学每积累 5 道同领域、同等级的不同练习题，最多调整一级。正确率和是否用了提示都会纳入判断。', 'Mathematics adjusts by at most one level after five distinct questions at the same topic and level. Accuracy and hint use both count.'],
-    starting: ['默认起点 {level}', 'Default start {level}'], diagnostic: ['诊断起点 {level}', 'Placement start {level}'],
+    starting: ['练习起点 {level}', 'Starting level {level}'], diagnostic: ['起点测试推荐 {level}', 'Placement check suggests {level}'],
     practiceLevel: ['练习推荐 {level}', 'Practice recommendation {level}'],
     evidenceProgress: ['当前等级已积累 {n}/{total} 道有效练习题', '{n}/{total} eligible practice questions at this level'],
     batchEvidence: ['最近一组 {level} 证据中有 {correct}/{total} 题正确，其中 {independent} 题独立答对。', 'In the latest {level} sample, {correct}/{total} were correct, including {independent} without hints.'],
-    recordTotals: ['累计答对 {correct}/{total} 次', '{correct}/{total} correct overall'], recordEmpty: ['暂无作答记录', 'No answers yet'],
+    recordTotals: ['累计作答 {total} 次，答对 {correct} 次', '{correct} correct out of {total} submitted'], recordEmpty: ['还没开始', 'Not started yet'],
     recentPeriod: ['最近 7 天', 'Last 7 days'], earlierPeriod: ['此前 7 天', 'Prior 7 days'],
-    correctFraction: ['{correct}/{total} 答对', '{correct}/{total} correct'],
-    unassessed: ['暂无推荐所需的作答样本', 'No sample for a recommendation yet'],
-    singleEnglish: ['短测建议从 {level} 开始', 'Placement suggests starting at {level}'],
+    correctFraction: ['答对 {correct}/{total}', '{correct}/{total} correct'],
+    singleEnglish: ['起点测试建议从 {level} 开始', 'The placement check suggests starting at {level}'],
     selfSelected: ['已选练习等级 {level}', 'Selected practice level {level}'],
     targetSummary: ['雅思自选目标 {band}', 'Selected IELTS target {band}'],
     showHint: ['查看提示', 'Show hint'], hint: ['提示', 'Hint'],
@@ -69,16 +68,18 @@
     emptyMatch: ['这个组合暂无题目，请选择其他知识点或等级。', 'No questions match this combination. Choose a different topic or level.'],
     unfinished: ['你有一次尚未完成的练习。', 'You have an unfinished practice.'], progressLabel: ['{subject} · 已提交 {done}/{total} 题', '{subject} · {done}/{total} submitted'],
     progress: ['第 {current} / {total} 题', 'Question {current} of {total}'], reviewMode: ['错题复习', 'Mistake review'], practiceMode: ['自主练习', 'Independent practice'],
-    selectHint: ['选择一个答案，然后提交。', 'Choose one answer, then submit.'], submit: ['提交答案', 'Check answer'], next: ['下一题', 'Next question'], finish: ['查看练习结果', 'See results'],
-    correct: ['答对了！', 'That’s correct!'], incorrect: ['再理解一步，你就会了。', 'Let’s work through this one.'], explanation: ['答案解析', 'Explanation'],
+    selectHint: ['选择一个答案，然后提交。', 'Choose one answer, then submit.'], submit: ['提交答案', 'Submit answer'], next: ['下一题', 'Next question'], finish: ['查看结果', 'See results'],
+    correct: ['答对了！', 'That’s correct!'], incorrect: ['这题答错了。', 'That’s incorrect.'], explanation: ['答案解析', 'Explanation'],
     rightAnswer: ['正确答案为 {answer}', 'The correct answer is {answer}'], yourAnswer: ['你的答案为 {answer}', 'Your answer was {answer}'],
-    gradedHint: ['本题已批改，作答记录已更新。', 'Answer checked. Your record is updated.'], exit: ['返回主页', 'Back to overview'],
+    exit: ['返回主页', 'Back to overview'],
     mistakesTitle: ['把错题，变成收获。', 'Turn mistakes into progress.'], mistakesSub: ['答错的题会留在这里，再次答对后自动移出。', 'Incorrect answers stay here until you answer them correctly in another practice.'],
     allSubjects: ['全部科目', 'All subjects'], reviewSubject: ['复习{subject}错题（{n}）', 'Review {subject} ({n})'],
     emptyTitle: ['这里还没有待复习的题目。', 'No mistakes to revisit here.'], emptyText: ['完成一些练习后，答错的题会自动收集到这里。', 'Try a practice. Any incorrect answers will be collected here for you.'],
     wrongCount: ['累计答错 {n} 次', 'Answered incorrectly {n} times'], reviewOne: ['再练此题', 'Try this question'],
-    result: ['练习结果', 'Practice results'], complete: ['练习完成！', 'Practice complete!'], resultSub: ['本次答对 {correct}/{total} 题。每一道题都让你更进一步。', 'You answered {correct}/{total} correctly. Every question is a step forward.'],
-    roundAccuracy: ['本次正确率', 'Accuracy this practice'], newPractice: ['再来一组', 'Another practice'], reviewWrong: ['复习本次错题', 'Revisit these mistakes'],
+    result: ['作答结果', 'Results'], complete: ['练习完成！', 'Practice complete!'],
+    resultEmpty: ['完成一组练习后，就能在这里查看结果。', 'Complete a practice set to see your results here.'],
+    resultSub: ['本次答对 {correct}/{total} 题。', 'You answered {correct} of {total} questions correctly.'],
+    roundAccuracy: ['本次正确率', 'Accuracy'], newPractice: ['再来一组', 'Another practice'], reviewWrong: ['复习本次错题', 'Revisit these mistakes'],
     answerDetails: ['回看本次作答', 'Review your answers'], clearData: ['清除学习记录', 'Clear study history'], cancel: ['取消', 'Cancel'], clear: ['清除记录', 'Clear history'],
     clearTitle: ['清除当前学习记录？', 'Clear current study history?'], clearText: ['将清除新版作答记录、错题、未完成的练习和设置。升级前的备份保留在浏览器中。', 'This deletes the new version’s answers, mistakes, unfinished practice and settings. The pre-upgrade backup stays in this browser.'],
     replaceTitle: ['开始一组新练习？', 'Start a new practice?'], replaceText: ['当前练习将结束。已经提交的答案仍计入学习记录。', 'The current practice will end. Submitted answers remain in your study history.'],
@@ -154,8 +155,8 @@
     if (route() === page) render();
     else location.hash = page;
   }
-  function heading(title, subtitle, eyebrow = '') {
-    return `<div class="page-heading"><div>${eyebrow ? `<p class="eyebrow">${eyebrow}</p>` : ''}<h1>${title}</h1><p class="subtitle">${subtitle}</p></div><span class="date-label">${escapeHtml(new Date().toLocaleDateString(locale(), { month: 'long', day: 'numeric', weekday: 'short' }))}</span></div>`;
+  function heading(title, subtitle = '') {
+    return `<div class="page-heading"><div><h1>${title}</h1>${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}</div><span class="date-label">${escapeHtml(new Date().toLocaleDateString(locale(), { month: 'long', day: 'numeric', weekday: 'short' }))}</span></div>`;
   }
   function render() {
     const page = route();
@@ -191,8 +192,8 @@
     const statCard = (label, value, unit, icon) => `<div class="stat"><div><p class="stat-label">${t(label)}</p><div class="stat-value">${value}${unit ? `<span class="stat-unit">${unit}</span>` : ''}</div></div><span class="stat-icon" aria-hidden="true">${icon}</span></div>`;
     const days = Core.dailyStats(state);
     const max = Math.max(5, ...days.map(day => day.total));
-    return `${heading(t('welcome'), t('welcomeSub'), t('workspace'))}
-      <section class="hero"><div class="hero-copy"><h2>${t('heroTitle')}</h2><p>${t('heroText')}</p>${button(t(state.active ? 'resume' : 'quickStart'), 'resume')}</div><div class="hero-art" aria-hidden="true"><div class="orbit"></div><div class="paper"><div class="paper-line"></div><div class="paper-line short"></div><div class="paper-sum">a² + b²</div><div class="paper-line"></div></div><span class="art-star">✧</span><div class="art-tile">Aa</div></div></section>
+    return `${heading(t('brand'), t('welcomeSub'))}
+      <section class="hero"><div class="hero-copy"><h2>${t('heroTitle')}</h2><p>${t('heroText')}</p>${button(t(state.active ? 'resume' : 'start'), 'resume')}</div><div class="hero-art" aria-hidden="true"><div class="orbit"></div><div class="paper"><div class="paper-line"></div><div class="paper-line short"></div><div class="paper-sum">a² + b²</div><div class="paper-line"></div></div><span class="art-star">✧</span><div class="art-tile">Aa</div></div></section>
       <section class="stats-grid" aria-label="${t('workspace')}">${statCard('answered', stats.total, t('questionsUnit'), '▤')}${statCard('accuracy', stats.accuracy === null ? '—' : `${stats.accuracy}%`, stats.accuracy === null ? t('noData') : '', '◎')}${statCard('pending', stats.mistakes, t('questionsUnit'), '▧')}</section>
       <section><div class="section-heading"><h2>${t('subjects')}</h2><span class="section-note">${t('available', { n: subjects.filter(subject => subject.available).length })}</span></div><div class="subject-grid">${subjects.filter(subject => subject.available).map(subject => {
         const stats = Core.getStats(state, questions, subject.id);
@@ -218,7 +219,7 @@
       ? (math ? t('diagnosticReadyMath') : t('diagnosticReadyEnglish', { level: placement.level }))
       : t(math ? 'mathDiagnosticInfo' : 'englishDiagnosticInfo');
     return `<section class="placement-panel" aria-labelledby="placement-heading">
-      <div><h3 id="placement-heading">${t(math ? 'mathDiagnostic' : 'englishDiagnostic')}</h3><p>${summary}</p></div>
+      <div><h3 id="placement-heading">${t('diagnosticMode')}</h3><p>${summary}</p></div>
       <div class="inline-actions">
         ${button(t(placement ? 'retakeDiagnostic' : 'startDiagnostic'), 'diagnostic', firstVisit ? '' : 'secondary', `data-subject="${subject}"`)}
         ${firstVisit ? button(t('skipPlacement'), 'skip-placement', 'secondary') : ''}
@@ -265,8 +266,8 @@
     const countOptions = ['5', '8', '12', '20', 'all'].map(value =>
       [value, value === 'all' ? t('allQuestions') : t('questionCount', { n: value })]);
 
-    return `<div class="practice-layout">
-      ${heading(t('setupTitle'), t('setupSub'))}
+    return `${heading(t('setupTitle'), t('setupSub'))}
+    <div class="practice-layout">
       ${unfinished ? `<div class="resume-banner">
         <div><strong>${t('unfinished')}</strong><p>${t('progressLabel', {
           subject: subjects.find(item => item.id === unfinished.subject).label[state.language],
@@ -302,6 +303,11 @@
 
   function renderRecords() {
     const rows = Learning.topicProgress(state);
+    const mathTopics = topicsBySubject.math.filter(topic => rows[topic].total > 0);
+    const englishTopics = topicsBySubject.english.filter(topic => rows[topic].total > 0);
+    const empty = `<p class="records-note">${t('recordEmpty')}</p>`;
+    if (!mathTopics.length && !englishTopics.length) return `${heading(t('recordTitle'))}${empty}`;
+
     const math = Learning.mathProfile(state);
     const english = Learning.latestPlacement(state, 'english');
     const preferredEnglish = state.preferences.englishLevel;
@@ -309,28 +315,28 @@
     return `${heading(t('recordTitle'), t('recordSubtitle'))}
       <section class="records-section" aria-labelledby="math-records">
         <div class="section-heading"><h2 id="math-records">${subjectName('math')}</h2></div>
-        <p class="records-note">${t('evidenceNote')}</p>
-        <div class="records-grid">${topicsBySubject.math.map(topic => renderTopicRecord('math', topic, rows[topic], math[topic])).join('')}</div>
+        ${mathTopics.length ? `<p class="records-note">${t('evidenceNote')}</p>
+          <div class="records-grid">${mathTopics.map(topic => renderTopicRecord('math', topic, rows[topic], math[topic])).join('')}</div>` : empty}
       </section>
       <section class="records-section" aria-labelledby="english-records">
         <div class="section-heading"><h2 id="english-records">${subjectName('english')}</h2></div>
-        <p class="records-note">${preferredEnglish ? t('selfSelected', { level: preferredEnglish })
-          : english ? t('singleEnglish', { level: english.level }) : t('unassessed')}</p>
+        ${preferredEnglish ? `<p class="records-note">${t('selfSelected', { level: preferredEnglish })}</p>`
+          : english ? `<p class="records-note">${t('singleEnglish', { level: english.level })}</p>` : ''}
         ${ieltsTarget ? `<p class="records-note">${t('targetSummary', { band: ieltsTarget })}</p>` : ''}
-        <div class="records-grid">${topicsBySubject.english.map(topic => renderTopicRecord('english', topic, rows[topic])).join('')}</div>
+        ${englishTopics.length ? `<div class="records-grid">${englishTopics.map(topic => renderTopicRecord('english', topic, rows[topic])).join('')}</div>` : empty}
       </section>`;
   }
 
   function renderTopicRecord(subject, topic, row, profile) {
-    const status = profile
+    const status = profile && (profile.basis !== 'starting' || profile.evidence > 0)
       ? t(({ starting: 'starting', diagnostic: 'diagnostic', practice: 'practiceLevel' })[profile.basis], { level: profile.level }) : '';
     const period = (label, data) => `<div><dt>${t(label)}</dt><dd>${data.total ? t('correctFraction', data) : '—'}</dd></div>`;
     return `<article class="panel topic-record" data-topic="${topic}">
       <div class="topic-record-heading"><h3>${text(topics[topic])}</h3>${status ? `<span class="tag">${status}</span>` : ''}</div>
-      <p>${row.total ? t('recordTotals', row) : t('recordEmpty')}</p>
+      <p>${t('recordTotals', row)}</p>
       <dl class="record-periods">${period('recentPeriod', row.recent)}${period('earlierPeriod', row.previous)}</dl>
       ${profile?.lastBatch ? `<p class="field-help">${t('batchEvidence', profile.lastBatch)}</p>` : ''}
-      ${profile ? `<p class="field-help">${t('evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
+      ${profile?.evidence ? `<p class="field-help">${t('evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
       ${button(t('practiceTopic'), 'topic-practice', 'secondary', `data-subject="${subject}" data-topic="${topic}"`)}
     </article>`;
   }
@@ -373,8 +379,8 @@
         <p class="answer-line">${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}</p>
         <p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p>
       </div>`;
-    return `<div class="practice-layout">
-      <div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
+    return `<div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
+    <div class="practice-layout">
       <div class="question-top"><span>${t('progress', { current: session.index + 1, total })}</span>
         <span>${t('progressLabel', { subject: subjects.find(item => item.id === session.subject).label[state.language], done, total })}</span></div>
       <div class="progress" role="progressbar" aria-label="${t('answered')}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}">
@@ -391,7 +397,7 @@
         </div>` : ''}
         ${graded ? feedback : ''}
         <div class="question-bottom">
-          <p class="question-hint">${t(graded ? (diagnostic ? 'diagnosticMode' : hinted ? 'hintUsed' : 'gradedHint') : 'selectHint')}</p>
+          ${!graded || hinted ? `<p class="question-hint">${t(graded ? 'hintUsed' : 'selectHint')}</p>` : ''}
           ${graded ? button(t(session.index === total - 1 ? 'finish' : 'next'), 'next')
             : button(t('submit'), 'grade', '', selected === null ? 'disabled' : '')}
         </div>
@@ -424,14 +430,18 @@
 
   function renderResult() {
     const session = state.sessions.find(item => item.id === resultId) || state.sessions.at(-1);
-    if (!session) return `<section class="panel empty-state"><h1>${t('result')}</h1><p>${t('emptyText')}</p>${button(t('start'), 'setup')}</section>`;
+    if (!session) return `${heading(t('result'))}
+      <section class="panel empty-state practice-layout"><p>${t('resultEmpty')}</p>${button(t('start'), 'setup')}</section>`;
     const attempts = state.attempts.filter(attempt => attempt.sessionId === session.id);
     const wrong = attempts.filter(attempt => !attempt.correct);
     const placement = Learning.placementResult(state, session);
-    return `<div class="practice-layout">
+    const diagnostic = session.mode === 'diagnostic';
+    return `<div class="page-heading"><div>
+      <p class="eyebrow">${subjectName(session.subject)}${diagnostic ? '' : ` · ${modeLabel(session.mode)}`}</p>
+      <h1>${t(diagnostic ? 'diagnosticFinished' : 'complete')}</h1>
+    </div></div>
+    <div class="practice-layout">
       <section class="panel result-panel">
-        <p class="eyebrow">${subjectName(session.subject)} · ${modeLabel(session.mode)}</p>
-        <h1>${t('complete')}</h1>
         <div class="result-score">${Math.round(session.correct / session.questionIds.length * 100)}<small>%</small></div>
         <span class="section-note">${t('roundAccuracy')}</span>
         <p>${t('resultSub', { correct: session.correct, total: session.questionIds.length })}</p>
@@ -647,7 +657,7 @@
   render();
   if (new URLSearchParams(location.search).get('test') === '1') {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.1';
+    script.src = 'tests.js?v=2.2';
     document.body.appendChild(script);
   }
 })();
