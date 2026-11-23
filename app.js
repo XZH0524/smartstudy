@@ -3,17 +3,23 @@
   const Core = globalThis.SmartStudyCore;
   const Learning = globalThis.SmartStudyLearning;
   const { subjects, topics, topicsBySubject, levels, skills, curricula, questions } = globalThis.SmartStudyData;
+  const brandName = 'EachVeya';
   const testing = new URLSearchParams(location.search).get('test');
+  // The original keys also hold the records created before the rename.
   const LEGACY_STORAGE_KEY = testing ? 'smart-study.tests.v1' : 'smart-study.v1';
   const STORAGE_KEY = LEGACY_STORAGE_KEY.replace(/v1$/, 'v2');
   const byId = new Map(questions.map(question => [question.id, question]));
   const copy = {
     home: ['学习主页', 'Overview'], practice: ['开始练习', 'Practice'], mistakes: ['错题复习', 'Mistakes'], records: ['学习记录', 'Progress'],
     skip: ['跳至主要内容', 'Skip to main content'], navigation: ['主导航', 'Main navigation'], language: ['界面语言', 'Interface language'],
-    local: ['学习记录保存在此浏览器', 'Study data stays in this browser'], footer: ['Smart Study · 英语与数学', 'Smart Study · English & mathematics'],
+    brand: [`${brandName} 学验共途`, brandName],
+    metaDescription: [`${brandName} 学验共途。让每位学生练习英语和数学，检验自己的理解。`,
+      `${brandName} gives every student a place to practise English and mathematics and check their understanding.`],
+    local: ['学习记录保存在此浏览器', 'Study data stays in this browser'],
+    disciplines: ['英语与数学', 'English & mathematics'],
     welcome: ['每一天，进步一点。', 'A little progress, every day.'], welcomeSub: ['从一个小练习开始，让知识真正成为你的。', 'A short practice today. A little more confidence tomorrow.'],
-    workspace: ['我的学习空间', 'Your learning space'], heroTitle: ['下一次进步，从这里开始。', 'Your next step starts here.'],
-    heroText: ['选择一个科目，完成练习，跟着解析弄懂每一道题。', 'Pick a subject, try a few questions, and understand the thinking behind every answer.'],
+    workspace: ['我的学习空间', 'Your learning space'], heroTitle: ['人人都有机会学习和自测。', 'A place for every learner.'],
+    heroText: ['练习英语或数学，看看哪些已经掌握，哪些还需要再练。', 'Practise English or mathematics and see what you understand and where to practise next.'],
     quickStart: ['开始今日练习', 'Start a practice'], resume: ['继续上次练习', 'Continue practice'], answered: ['累计作答', 'Answers submitted'], accuracy: ['作答正确率', 'Answer accuracy'],
     pending: ['待复习错题', 'Mistakes to revisit'], questionsUnit: ['题', 'questions'], noData: ['暂无数据', 'No data yet'], subjects: ['选择你的科目', 'Choose your subject'],
     available: ['{n} 个科目可练习', '{n} subjects ready to explore'], questionBank: ['{n} 道练习题', '{n} practice questions'], coverage: ['累计作答 {n} 次', '{n} answers submitted'],
@@ -153,18 +159,22 @@
   }
   function render() {
     const page = route();
-    document.documentElement.lang = state.language === 'zh' ? 'zh-CN' : 'en';
+    const chinese = state.language === 'zh';
+    document.documentElement.lang = chinese ? 'zh-CN' : 'en';
+    document.getElementById('brand').setAttribute('aria-label', t('brand'));
+    document.getElementById('brand-local-name').hidden = !chinese;
+    document.querySelector('meta[name="description"]').content = t('metaDescription');
     document.getElementById('language').value = state.language;
     document.getElementById('language-label').innerHTML = t('language');
     document.getElementById('skip-link').innerHTML = t('skip');
     const navigation = document.getElementById('navigation');
-    navigation.setAttribute('aria-label', state.language === 'zh' ? '主导航' : 'Main navigation');
+    navigation.setAttribute('aria-label', t('navigation'));
     const count = Core.getMistakes(state, questions).length;
     navigation.innerHTML = [['home', '⌂'], ['practice', '▤'], ['mistakes', '▧'], ['records', '▥']].map(([id, icon]) => `<a class="nav-link ${page === id || (page === 'result' && id === 'practice') ? 'active' : ''}" href="#${id}" ${page === id ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span><span>${t(id)}</span>${id === 'mistakes' && count ? `<span class="nav-count">${count}</span>` : ''}</a>`).join('');
     document.getElementById('local-label').innerHTML = t('local');
-    document.getElementById('footer').innerHTML = t('footer');
-    document.getElementById('breadcrumb').innerHTML = `Smart Study &nbsp; / &nbsp; ${t(page)}`;
-    document.title = `${document.getElementById('breadcrumb').textContent.trim()} · Smart Study`;
+    document.getElementById('footer').innerHTML = `${t('brand')} · ${t('disciplines')}`;
+    document.getElementById('breadcrumb').innerHTML = `${brandName} &nbsp; / &nbsp; ${t(page)}`;
+    document.title = `${t(page)} · ${t('brand')}`;
     if (page === 'home') main.innerHTML = renderHome();
     if (page === 'practice') {
       main.innerHTML = state.active && !forceSetup ? renderQuestion() : renderSetup();
@@ -637,7 +647,7 @@
   render();
   if (new URLSearchParams(location.search).get('test') === '1') {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2';
+    script.src = 'tests.js?v=2.1';
     document.body.appendChild(script);
   }
 })();

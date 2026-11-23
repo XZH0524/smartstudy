@@ -460,11 +460,17 @@
   }
 
   await resetUi();
-  await test('新用户首页显示真实零记录，英文切换与导航同步', () => {
+  await test('新用户首页显示真实零记录，语言切换更新 EachVeya 品牌与导航', () => {
     equal(document.documentElement.lang, 'zh-CN');
     assert(element('.stats-grid').textContent.includes('暂无数据'));
+    equal(element('#brand').getAttribute('aria-label'), 'EachVeya 学验共途');
+    assert(!element('#brand-local-name').hidden);
+    assert(document.title.includes('EachVeya 学验共途'));
     change('language', 'en');
     equal(document.documentElement.lang, 'en');
+    equal(element('#brand').getAttribute('aria-label'), 'EachVeya');
+    assert(element('#brand-local-name').hidden);
+    equal(document.title, 'Overview · EachVeya');
     assert(element('#navigation').textContent.includes('Progress'));
     fitsViewport();
   });
@@ -698,6 +704,6 @@
     report.appendChild(line);
   }
   document.body.prepend(report);
-  document.title = `Smart Study tests ${results.length - failed.length}/${results.length}`;
+  document.title = `EachVeya tests ${results.length - failed.length}/${results.length}`;
   globalThis.SmartStudyTestResults = results;
 })();
