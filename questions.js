@@ -1,4 +1,4 @@
-/* Add a subject to SUBJECTS and its question records here to extend the app. */
+/* The first release's questions keep their IDs and option order for saved history. */
 (function () {
   'use strict';
   const bilingual = (zh, en) => ({ zh, en });
@@ -16,7 +16,8 @@
   ];
   const topics = {
     grammar: bilingual('语法', 'Grammar'), vocabulary: bilingual('词汇', 'Vocabulary'), reading: bilingual('阅读', 'Reading'),
-    arithmetic: bilingual('数与运算', 'Numbers'), algebra: bilingual('代数', 'Algebra'), geometry: bilingual('几何', 'Geometry')
+    arithmetic: bilingual('算术', 'Arithmetic'), algebra: bilingual('代数', 'Algebra'), geometry: bilingual('几何', 'Geometry'),
+    functions: bilingual('函数', 'Functions'), statistics: bilingual('概率与统计', 'Probability & statistics')
   };
   const questions = [
     question('en-g01','english','grammar','easy','选择正确的形式。She ___ to school every day.','Choose the correct form. She ___ to school every day.',['go','goes','going','gone'],1,'every day 表示习惯性动作，用一般现在时。主语 She 是第三人称单数，go 变为 goes。','Every day signals a routine. In the present simple, third-person singular she takes goes.'),
@@ -31,7 +32,7 @@
     question('en-v02','english','vocabulary','easy','哪个单词与 ancient 意思相反？','Which word is the opposite of ancient?',['old','historic','modern','early'],2,'ancient 表示古代的，modern 表示现代的，两者意思相反。','Ancient means belonging to the distant past. Modern refers to the present or recent times.'),
     question('en-v03','english','vocabulary','medium','选择合适的词。Please ___ me your pencil for a minute.','Choose the word. Please ___ me your pencil for a minute.',['borrow','lend','keep','take'],1,'lend 表示把东西借给别人。lend me your pencil 意思是把你的铅笔借给我。borrow 表示向别人借入。','Lend means to give something temporarily. Lend me your pencil asks someone to let you use theirs. Borrow means to receive something temporarily.'),
     question('en-v04','english','vocabulary','medium','选择合适的词。We must ___ the environment.','Choose the word. We must ___ the environment.',['protect','predict','produce','pretend'],0,'protect 表示保护，protect the environment 是保护环境。predict 是预测，produce 是生产，pretend 是假装。','Protect means to keep something safe from harm. Protect the environment is the appropriate phrase.'),
-    question('en-v05','english','vocabulary','hard','选择合适的词。Her explanation was clear and ___.','Choose the word. Her explanation was clear and ___.',['confused','confusing','logical','carelessly'],2,'logical 表示合乎逻辑的，与 clear 并列修饰 explanation。carelessly 是副词，其余选项不符合此处表达的清晰含义。','Logical means following a sensible order of reasoning. It is an adjective that fits with clear to describe the explanation.'),
+    question('en-v05','english','vocabulary','hard','选择合适的词。Her explanation was clear and ___. Each point followed naturally from the one before it.','Choose the word. Her explanation was clear and ___. Each point followed naturally from the one before it.',['confused','confusing','logical','carelessly'],2,'后一句说明论点之间有自然的推理顺序，所以用 logical。','The next sentence describes a sensible sequence of reasoning, which is what logical means.'),
     question('en-v06','english','vocabulary','hard','句子中的 give up 是什么意思？Never give up on your goals.','What does give up mean in Never give up on your goals?',[['放弃','Stop trying'],['赠送','Give a gift'],['加速','Speed up'],['醒来','Wake up']],0,'give up 表示放弃。整句话鼓励你继续为目标努力。','Give up means to stop trying. The sentence encourages continued effort toward your goals.'),
     question('en-v07','english','vocabulary','easy','选择合适的词。I am ___. I need some water.','Choose the word. I am ___. I need some water.',['hungry','thirsty','sleepy','cold'],1,'需要喝水说明口渴，thirsty 表示口渴的。','Needing water suggests thirst. Thirsty means feeling a need to drink.'),
     question('en-v08','english','vocabulary','medium','选择合适的词。We arrived ___ time, before the lesson began.','Choose the word. We arrived ___ time, before the lesson began.',['in','at','of','with'],0,'in time 表示及时，在某件事发生之前赶到。此处指在上课前到达。','In time means early enough for something. Here, they arrived before the lesson began.'),
@@ -68,5 +69,41 @@
     question('ma-g07','math','geometry','easy','边长为 7 cm 的正方形，其周长是多少？','What is the perimeter of a square with side length 7 cm?',['14 cm','21 cm','28 cm','49 cm'],2,'正方形有四条等长的边，周长为 4 × 7 = 28 cm。','A square has four equal sides. Its perimeter is 4 × 7 = 28 cm.'),
     question('ma-g08','math','geometry','medium','一个长方体的长、宽、高分别为 4 cm、3 cm、5 cm，体积是多少？','A cuboid measures 4 cm by 3 cm by 5 cm. What is its volume?',['12 cm³','47 cm³','60 cm³','94 cm³'],2,'长方体体积 = 长 × 宽 × 高 = 4 × 3 × 5 = 60 cm³。','Cuboid volume = length × width × height = 4 × 3 × 5 = 60 cm³.')
   ];
-  globalThis.SmartStudyData = { subjects, topics, questions };
+  const mathTopics = ['arithmetic', 'algebra', 'geometry', 'functions', 'statistics'];
+  const englishTopics = ['vocabulary', 'grammar', 'reading'];
+  const levels = { math: ['L1', 'L2', 'L3', 'L4', 'L5'], english: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] };
+  const skills = {
+    calculation: bilingual('计算', 'Calculation'), application: bilingual('知识应用', 'Application'),
+    reasoning: bilingual('逻辑推理', 'Reasoning')
+  };
+  const curricula = [
+    ['cn', '中国课程', 'China curriculum'], ['gcse', 'GCSE', 'GCSE'], ['igcse', 'IGCSE', 'IGCSE'],
+    ['common-core', '美国 Common Core', 'US Common Core'], ['ib', 'IB', 'IB']
+  ].map(([id, zh, en]) => ({ id, label: bilingual(zh, en) }));
+  const legacyLevels = {
+    'en-g01': 'A1', 'en-g02': 'A1', 'en-g03': 'A2', 'en-g04': 'B1', 'en-g05': 'A2', 'en-g06': 'B1', 'en-g07': 'B1', 'en-g08': 'A1',
+    'en-v01': 'A1', 'en-v02': 'A2', 'en-v03': 'A2', 'en-v04': 'B1', 'en-v05': 'B1', 'en-v06': 'A2', 'en-v07': 'A1', 'en-v08': 'B1',
+    'en-r01': 'A1', 'en-r02': 'A1', 'en-r03': 'A2', 'en-r04': 'A2', 'en-r05': 'B1', 'en-r06': 'B1', 'en-r07': 'A1', 'en-r08': 'A2'
+  };
+  const legacyMath = {
+    'ma-n01': ['L2', 'calculation'], 'ma-n02': ['L2', 'calculation'], 'ma-n03': ['L2', 'calculation'],
+    'ma-n04': ['L3', 'application'], 'ma-n05': ['L4', 'application'], 'ma-n06': ['L4', 'reasoning', 'statistics'],
+    'ma-n07': ['L1', 'calculation', 'statistics'], 'ma-n08': ['L3', 'calculation'],
+    'ma-a01': ['L2', 'calculation'], 'ma-a02': ['L1', 'calculation'], 'ma-a03': ['L2', 'calculation'],
+    'ma-a04': ['L3', 'reasoning'], 'ma-a05': ['L4', 'calculation'], 'ma-a06': ['L4', 'reasoning'],
+    'ma-a07': ['L1', 'reasoning'], 'ma-a08': ['L2', 'application', 'functions'],
+    'ma-g01': ['L1', 'application'], 'ma-g02': ['L2', 'application'], 'ma-g03': ['L3', 'application'],
+    'ma-g04': ['L2', 'application'], 'ma-g05': ['L4', 'reasoning'], 'ma-g06': ['L3', 'reasoning'],
+    'ma-g07': ['L1', 'application'], 'ma-g08': ['L2', 'application']
+  };
+  const legacyQuestions = questions.map(({ difficulty, ...item }) => {
+    if (item.subject === 'english') return { ...item, level: legacyLevels[item.id], track: 'cefr' };
+    const [level, skill, topic = item.topic] = legacyMath[item.id];
+    return { ...item, topic, level, skill, curriculumRefs: [] };
+  });
+
+  globalThis.SmartStudyData = {
+    subjects, topics, topicsBySubject: { math: mathTopics, english: englishTopics }, levels, skills, curricula,
+    bilingual, questions: legacyQuestions
+  };
 })();

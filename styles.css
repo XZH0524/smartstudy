@@ -611,7 +611,8 @@ footer {
 .field {
   display:flex;
   flex-direction:column;
-  gap:9px
+  gap:9px;
+  min-width:0
 }
 .field label {
   font-size:.9rem;
@@ -627,6 +628,169 @@ footer {
   margin:20px 0;
   color:#5d735e;
   font-size:.9rem
+}
+.subject-field {
+  margin:20px 0;
+}
+.practice-fields {
+  margin:22px 0 12px;
+}
+.study-tracks {
+  margin:0 0 16px;
+}
+.filter-button {
+  min-height:44px;
+}
+.placement-panel {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  padding:20px;
+  border:1px solid #d9e5d3;
+  border-radius:12px;
+  background:#edf4e9;
+}
+.placement-panel p, .suggestion-panel p, .field-help, .records-note {
+  color:var(--muted);
+  margin-top:6px;
+  font-size:.92rem;
+}
+.inline-actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.ielts-panel {
+  background:#eff3f9;
+  border-color:#dae3f0;
+}
+.ielts-panel .field {
+  width:min(100%, 260px);
+}
+.suggestion-panel {
+  margin-top:20px;
+}
+.suggestion-list, .placement-result ul {
+  list-style:none;
+  padding:0;
+  margin:10px 0 0;
+}
+.suggestion-list li, .placement-result li {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:8px 16px;
+  padding:12px 0;
+  border-bottom:1px solid var(--line);
+}
+.suggestion-list p {
+  margin:2px 0 0;
+}
+.setup-submit {
+  display:flex;
+  justify-content:flex-end;
+}
+.curriculum-plan {
+  margin-top:22px;
+  padding-top:16px;
+  border-top:1px solid var(--line);
+}
+.curriculum-plan summary {
+  font-weight:600;
+  cursor:pointer;
+}
+.curriculum-plan p, .curriculum-plan ul {
+  margin:8px 0 0;
+  color:var(--muted);
+  font-size:.92rem;
+}
+.inline-error {
+  padding:10px 14px;
+  margin:12px 0;
+  color:#903e32;
+  background:#fff1ec;
+  border-radius:8px;
+}
+.records-section + .records-section {
+  margin-top:32px;
+}
+.records-section .section-heading {
+  margin-bottom:5px;
+}
+.records-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%, 246px),1fr));
+  gap:16px;
+  margin-top:16px;
+}
+.topic-record {
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  padding:20px;
+}
+.topic-record-heading {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px 12px;
+  margin-bottom:9px;
+}
+.topic-record > p {
+  margin:0 0 11px;
+}
+.topic-record .button {
+  margin-top:auto;
+}
+.record-periods {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  width:100%;
+  gap:8px;
+  margin:0 0 13px;
+}
+.record-periods > div {
+  padding:10px;
+  background:#f3f6f1;
+  border-radius:8px;
+  min-width:0;
+}
+.record-periods dt {
+  color:var(--muted);
+  font-size:.83rem;
+}
+.record-periods dd {
+  margin:4px 0 0;
+  font-size:.98rem;
+  font-weight:600;
+}
+.hint-area {
+  margin-top:16px;
+}
+.hint-content {
+  padding:12px 16px;
+  background:#f0f5ed;
+  border-left:3px solid #719b5e;
+  border-radius:4px 9px 9px 4px;
+}
+.hint-content strong {
+  margin-right:5px;
+}
+.diagnostic-feedback h3 {
+  margin:0;
+}
+.placement-result {
+  margin-top:20px;
+}
+.placement-result > p {
+  margin:9px 0;
+  color:var(--muted);
+}
+.question-title, .options span, .topic-record, .placement-result {
+  overflow-wrap:anywhere;
 }
 .resume-banner {
   padding:20px 24px;
@@ -968,7 +1132,7 @@ dialog p {
 [hidden] {
   display:none!important
 }
-@media(min-width:1500px) {
+@media (min-width: 1500px) {
   main {
     padding-top:47px
   }
@@ -979,7 +1143,7 @@ dialog p {
     padding:29px
   }
 }
-@media(max-width:1100px) {
+@media (max-width: 1100px) {
   .sidebar {
     width:185px;
     padding-left:20px;
@@ -1024,7 +1188,7 @@ dialog p {
     display:none
   }
 }
-@media(max-width:760px) {
+@media (max-width: 760px) {
   .app-shell {
     display:block
   }
@@ -1061,6 +1225,7 @@ dialog p {
     gap:6px
   }
   .nav-link {
+    min-width:0;
     flex:1;
     padding:12px 7px;
     justify-content:center;
@@ -1228,7 +1393,7 @@ dialog p {
     flex:1
   }
 }
-@media(max-width:400px) {
+@media (max-width: 400px) {
   main {
     padding-left:15px;
     padding-right:15px
@@ -1245,6 +1410,12 @@ dialog p {
   }
   .nav-link {
     font-size:.85rem
+  }
+  .nav-link .nav-icon {
+    display:none;
+  }
+  .inline-actions, .inline-actions .button, .setup-submit .button {
+    width:100%;
   }
   .nav-count {
     display:none
@@ -1278,7 +1449,7 @@ dialog p {
     font-size:.75rem
   }
 }
-@media(prefers-reduced-motion:reduce) {
+@media (prefers-reduced-motion: reduce) {
   * {
     scroll-behavior:auto!important;
     transition:none!important

@@ -1,27 +1,66 @@
 (function () {
   'use strict';
   const Core = globalThis.SmartStudyCore;
-  const { subjects, topics, questions } = globalThis.SmartStudyData;
+  const Learning = globalThis.SmartStudyLearning;
+  const { subjects, topics, topicsBySubject, levels, skills, curricula, questions } = globalThis.SmartStudyData;
   const testing = new URLSearchParams(location.search).get('test');
-  const STORAGE_KEY = testing ? 'smart-study.tests.v1' : 'smart-study.v1';
+  const LEGACY_STORAGE_KEY = testing ? 'smart-study.tests.v1' : 'smart-study.v1';
+  const STORAGE_KEY = LEGACY_STORAGE_KEY.replace(/v1$/, 'v2');
   const byId = new Map(questions.map(question => [question.id, question]));
   const copy = {
-    home: ['学习主页', 'Overview'], practice: ['开始练习', 'Practice'], mistakes: ['错题复习', 'Mistake review'],
+    home: ['学习主页', 'Overview'], practice: ['开始练习', 'Practice'], mistakes: ['错题复习', 'Mistakes'], records: ['学习记录', 'Progress'],
     skip: ['跳至主要内容', 'Skip to main content'], navigation: ['主导航', 'Main navigation'], language: ['界面语言', 'Interface language'],
-    local: ['学习记录保存在此浏览器', 'Study data stays in this browser'], footer: ['Smart Study · 本地学习版 · 英语与数学', 'Smart Study · Local edition · English & mathematics'],
+    local: ['学习记录保存在此浏览器', 'Study data stays in this browser'], footer: ['Smart Study · 英语与数学', 'Smart Study · English & mathematics'],
     welcome: ['每一天，进步一点。', 'A little progress, every day.'], welcomeSub: ['从一个小练习开始，让知识真正成为你的。', 'A short practice today. A little more confidence tomorrow.'],
     workspace: ['我的学习空间', 'Your learning space'], heroTitle: ['下一次进步，从这里开始。', 'Your next step starts here.'],
     heroText: ['选择一个科目，完成练习，跟着解析弄懂每一道题。', 'Pick a subject, try a few questions, and understand the thinking behind every answer.'],
     quickStart: ['开始今日练习', 'Start a practice'], resume: ['继续上次练习', 'Continue practice'], answered: ['累计作答', 'Answers submitted'], accuracy: ['作答正确率', 'Answer accuracy'],
     pending: ['待复习错题', 'Mistakes to revisit'], questionsUnit: ['题', 'questions'], noData: ['暂无数据', 'No data yet'], subjects: ['选择你的科目', 'Choose your subject'],
-    available: ['{n} 个科目可练习', '{n} subjects ready to explore'], questionBank: ['{n} 道题', '{n} questions'], coverage: ['已练习 {n}/{total} 题', '{n}/{total} questions tried'],
+    available: ['{n} 个科目可练习', '{n} subjects ready to explore'], questionBank: ['{n} 道练习题', '{n} practice questions'], coverage: ['累计作答 {n} 次', '{n} answers submitted'],
     start: ['开始练习', 'Start practice'], lastWeek: ['最近 7 天', 'The last 7 days'], activity: ['每日作答', 'Daily answers'], moreSubjects: ['更多探索，即将开启', 'More to explore, soon'],
-    comingSoon: ['即将推出', 'Coming soon'], setupTitle: ['让练习适合你。', 'Make it your practice.'], setupSub: ['选择科目和难度，按照自己的节奏开始。', 'Choose a subject and difficulty. Go at your own pace.'],
-    settings: ['练习设置', 'Practice settings'], subject: ['科目', 'Subject'], difficulty: ['难度', 'Difficulty'], allLevels: ['混合难度', 'Mixed difficulty'],
-    easy: ['基础', 'Foundation'], medium: ['进阶', 'Intermediate'], hard: ['挑战', 'Challenge'], count: ['题目数量', 'Number of questions'],
+    comingSoon: ['即将推出', 'Coming soon'], setupTitle: ['选择适合你的练习', 'Find your next practice'], setupSub: ['选择科目、知识点和等级，或按推荐开始。', 'Choose a subject, topic and level, or start with a recommendation.'],
+    settings: ['练习设置', 'Practice settings'], subject: ['科目', 'Subject'], difficulty: ['练习等级', 'Practice level'], topic: ['知识点', 'Topic'],
+    allTopics: ['所有知识点', 'All topics'], autoMath: ['按知识点推荐', 'Recommended by topic'],
+    autoEnglish: ['推荐起点 {level}', 'Recommended start {level}'], starterEnglish: ['从 A1 开始', 'Start at A1'],
+    count: ['题目数量', 'Number of questions'],
     questionCount: ['{n} 题', '{n} questions'], allQuestions: ['全部匹配题目', 'All matching questions'],
-    setupInfo: ['当前条件有 {n} 道题。本次随机抽取 {count} 道，提交后显示答案和解析。', '{n} questions match. This practice selects {count} at random. Answers and explanations appear after submission.'],
-    curriculum: ['题目覆盖常见中学知识点，未绑定特定国家教材。', 'Questions cover common secondary-school topics, without a country-specific curriculum.'],
+    setupInfo: ['当前匹配 {n} 道，本次练习 {count} 道，优先安排没做过的题。', '{n} questions match. This set includes {count}, with untried questions first.'],
+    mathScale: ['L1 为入门，L5 为挑战。等级按知识点分别推荐。', 'L1 is the starting tier and L5 is the most challenging. Each topic has its own recommendation.'],
+    curriculumPlan: ['课程体系规划', 'Curriculum plans'],
+    curriculumStatus: ['第一版提供通用数学练习，以下课程专项题库待开发。', 'This release offers general mathematics. Curriculum-specific question banks are planned.'],
+    diagnosticMode: ['能力诊断', 'Placement check'], mathDiagnostic: ['数学起点诊断', 'Mathematics placement'],
+    englishDiagnostic: ['英语起点短测', 'English placement'],
+    mathDiagnosticInfo: ['10 道题覆盖五个领域，帮你分别找到练习起点。', 'Try 10 questions across five domains to find a starting point for each one.'],
+    englishDiagnosticInfo: ['12 道词汇、语法和阅读选择题，推荐 A1–B2 的练习起点。', 'Try 12 vocabulary, grammar and reading questions for an A1–B2 practice starting point.'],
+    diagnosticReadyMath: ['已有各领域的起点推荐，之后的练习会继续调整。', 'You have starting recommendations by domain. Practice helps refine them.'],
+    diagnosticReadyEnglish: ['短测推荐从 {level} 开始练习。也可以手选 A1–C2。', 'The check suggests starting at {level}. You can also choose A1–C2 yourself.'],
+    startDiagnostic: ['开始短测', 'Start placement check'], retakeDiagnostic: ['重新测试', 'Retake check'],
+    skipPlacement: ['跳过诊断，手动选题', 'Skip check and choose practice'],
+    diagnosticSubmitted: ['答案已记录。完成短测后可查看解析。', 'Answer recorded. Explanations are available after the check.'],
+    diagnosticComplete: ['起点推荐已生成', 'Your starting recommendations'],
+    diagnosticCaution: ['结果仅用于选择练习起点。', 'These results suggest practice starting points.'],
+    cefrScope: ['等级是选择题的练习标签，短测结果不能代表完整的 CEFR 能力。', 'CEFR levels label practice items. This short quiz does not assess the full range of CEFR skills.'],
+    cefrTrack: ['通用英语（CEFR）', 'General English (CEFR)'], ieltsTrack: ['雅思备考', 'IELTS preparation'],
+    ieltsTarget: ['雅思目标分数', 'IELTS target band'], noTarget: ['暂不设置', 'No target set'],
+    ieltsStatus: ['专项题库和模拟评分尚未开放。目标分数只作为你的备考计划。', 'Exam practice and mock scoring are planned. The band you select is your personal target.'],
+    recommendation: ['推荐练习', 'Suggested practice'], englishWeakness: ['近 14 天有 {n} 道待复习错题', '{n} unresolved mistakes from the last 14 days'],
+    practiceTopic: ['练这个知识点', 'Practise this topic'], recordTitle: ['学习记录', 'Learning progress'],
+    recordSubtitle: ['按知识点查看练习起点、作答表现和最近两周的记录。', 'See practice levels, answers and the last two weeks of activity by topic.'],
+    evidenceNote: ['数学每积累 5 道同领域、同等级的不同练习题，最多调整一级。正确率和是否用了提示都会纳入判断。', 'Mathematics adjusts by at most one level after five distinct questions at the same topic and level. Accuracy and hint use both count.'],
+    starting: ['默认起点 {level}', 'Default start {level}'], diagnostic: ['诊断起点 {level}', 'Placement start {level}'],
+    practiceLevel: ['练习推荐 {level}', 'Practice recommendation {level}'],
+    evidenceProgress: ['当前等级已积累 {n}/{total} 道有效练习题', '{n}/{total} eligible practice questions at this level'],
+    batchEvidence: ['最近一组 {level} 证据中有 {correct}/{total} 题正确，其中 {independent} 题独立答对。', 'In the latest {level} sample, {correct}/{total} were correct, including {independent} without hints.'],
+    recordTotals: ['累计答对 {correct}/{total} 次', '{correct}/{total} correct overall'], recordEmpty: ['暂无作答记录', 'No answers yet'],
+    recentPeriod: ['最近 7 天', 'Last 7 days'], earlierPeriod: ['此前 7 天', 'Prior 7 days'],
+    correctFraction: ['{correct}/{total} 答对', '{correct}/{total} correct'],
+    unassessed: ['暂无推荐所需的作答样本', 'No sample for a recommendation yet'],
+    singleEnglish: ['短测建议从 {level} 开始', 'Placement suggests starting at {level}'],
+    selfSelected: ['已选练习等级 {level}', 'Selected practice level {level}'],
+    targetSummary: ['雅思自选目标 {band}', 'Selected IELTS target {band}'],
+    showHint: ['查看提示', 'Show hint'], hint: ['提示', 'Hint'],
+    hintUsed: ['本题用了提示', 'Hint used'],
+    emptyMatch: ['这个组合暂无题目，请选择其他知识点或等级。', 'No questions match this combination. Choose a different topic or level.'],
     unfinished: ['你有一次尚未完成的练习。', 'You have an unfinished practice.'], progressLabel: ['{subject} · 已提交 {done}/{total} 题', '{subject} · {done}/{total} submitted'],
     progress: ['第 {current} / {total} 题', 'Question {current} of {total}'], reviewMode: ['错题复习', 'Mistake review'], practiceMode: ['自主练习', 'Independent practice'],
     selectHint: ['选择一个答案，然后提交。', 'Choose one answer, then submit.'], submit: ['提交答案', 'Check answer'], next: ['下一题', 'Next question'], finish: ['查看练习结果', 'See results'],
@@ -35,10 +74,10 @@
     result: ['练习结果', 'Practice results'], complete: ['练习完成！', 'Practice complete!'], resultSub: ['本次答对 {correct}/{total} 题。每一道题都让你更进一步。', 'You answered {correct}/{total} correctly. Every question is a step forward.'],
     roundAccuracy: ['本次正确率', 'Accuracy this practice'], newPractice: ['再来一组', 'Another practice'], reviewWrong: ['复习本次错题', 'Revisit these mistakes'],
     answerDetails: ['回看本次作答', 'Review your answers'], clearData: ['清除学习记录', 'Clear study history'], cancel: ['取消', 'Cancel'], clear: ['清除记录', 'Clear history'],
-    clearTitle: ['清除这台设备上的学习记录？', 'Clear study history on this device?'], clearText: ['作答记录、错题和未完成的练习都将清除，此操作无法撤销。', 'This deletes answers, mistakes and unfinished practice from this browser. This action cannot be undone.'],
+    clearTitle: ['清除当前学习记录？', 'Clear current study history?'], clearText: ['将清除新版作答记录、错题、未完成的练习和设置。升级前的备份保留在浏览器中。', 'This deletes the new version’s answers, mistakes, unfinished practice and settings. The pre-upgrade backup stays in this browser.'],
     replaceTitle: ['开始一组新练习？', 'Start a new practice?'], replaceText: ['当前练习将结束。已经提交的答案仍计入学习记录。', 'The current practice will end. Submitted answers remain in your study history.'],
     continue: ['开始新练习', 'Start new practice'], storageUnavailable: ['浏览器无法保存记录。你仍可练习，但关闭或刷新页面后，本次记录可能丢失。请在普通浏览模式下打开。', 'This browser cannot save your progress. You can practise, but this session may be lost after closing or refreshing. Try a normal browsing window.'],
-    storageDamaged: ['发现无法读取的学习记录，已启用新的临时学习状态。下次保存会更新本地记录。', 'Saved study data could not be read. A fresh study state is in use. Your next save will update the local record.'],
+    storageDamaged: ['学习记录无法读取。浏览器里的原记录已保留，本次作答暂时无法保存。', 'Saved study data could not be read. The existing record is kept, and answers in this session cannot be saved.'],
     noMatch: ['当前条件没有题目，请调整设置。', 'No questions match. Please adjust the settings.'], changed: ['另一窗口已更新学习记录，页面已同步。', 'Study history changed in another window. This page is now up to date.'],
     error: ['操作未完成，请重新选择练习后再试。', 'The action could not be completed. Please choose a practice and try again.'], today: ['今天', 'Today']
   };
@@ -48,7 +87,7 @@
   let state = loadState();
   let selected = null;
   let selectedQuestion = '';
-  let setup = { subject: 'english', difficulty: 'all', count: '8' };
+  let setup = { subject: 'english', level: state.preferences.englishLevel || 'auto', topic: '', count: '8', track: 'cefr' };
   let forceSetup = false;
   let mistakeFilter = 'all';
   let resultId = null;
@@ -63,32 +102,33 @@
   }
   const text = value => escapeHtml(value[state.language]);
   const subjectName = id => text(subjects.find(subject => subject.id === id)?.label || { zh: id, en: id });
-  const button = (label, action, style = '', extra = '') => `<button class="button ${style}" data-action="${action}" ${extra}>${label}</button>`;
+  const button = (label, action, style = '', extra = '') => `<button type="button" class="button ${style}" data-action="${action}" ${extra}>${label}</button>`;
   const locale = () => state.language === 'zh' ? 'zh-CN' : 'en-GB';
 
   function loadState() {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? Core.normalizeState(JSON.parse(saved), questions) : Core.createState();
+      const saved = Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEY, questions);
+      storageIssue = '';
+      persistent = true;
+      return saved;
     } catch (error) {
       storageIssue = error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
-      if (error.name === 'SecurityError') persistent = false;
+      persistent = false;
       return Core.createState();
     }
   }
   function commit(update) {
     if (persistent) {
       try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) state = Core.normalizeState(JSON.parse(saved), questions);
-      } catch (_) { /* Keep the current in-memory state if saved data is unavailable. */ }
+        state = Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEY, questions);
+      } catch (error) {
+        persistent = false;
+        storageIssue = error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
+      }
     }
     state = update(state);
     try {
-      if (persistent) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        if (storageIssue === 'storageDamaged') storageIssue = '';
-      }
+      if (persistent) Core.saveState(localStorage, STORAGE_KEY, state);
     } catch (_) {
       persistent = false;
       storageIssue = 'storageUnavailable';
@@ -102,7 +142,7 @@
   }
   function route() {
     const value = location.hash.slice(1);
-    return ['home', 'practice', 'mistakes', 'result'].includes(value) ? value : 'home';
+    return ['home', 'practice', 'mistakes', 'result', 'records'].includes(value) ? value : 'home';
   }
   function go(page) {
     if (route() === page) render();
@@ -120,15 +160,19 @@
     const navigation = document.getElementById('navigation');
     navigation.setAttribute('aria-label', state.language === 'zh' ? '主导航' : 'Main navigation');
     const count = Core.getMistakes(state, questions).length;
-    navigation.innerHTML = [['home', '⌂'], ['practice', '▤'], ['mistakes', '▧']].map(([id, icon]) => `<a class="nav-link ${page === id || (page === 'result' && id === 'practice') ? 'active' : ''}" href="#${id}" ${page === id ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span><span>${t(id)}</span>${id === 'mistakes' && count ? `<span class="nav-count">${count}</span>` : ''}</a>`).join('');
+    navigation.innerHTML = [['home', '⌂'], ['practice', '▤'], ['mistakes', '▧'], ['records', '▥']].map(([id, icon]) => `<a class="nav-link ${page === id || (page === 'result' && id === 'practice') ? 'active' : ''}" href="#${id}" ${page === id ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span><span>${t(id)}</span>${id === 'mistakes' && count ? `<span class="nav-count">${count}</span>` : ''}</a>`).join('');
     document.getElementById('local-label').innerHTML = t('local');
     document.getElementById('footer').innerHTML = t('footer');
     document.getElementById('breadcrumb').innerHTML = `Smart Study &nbsp; / &nbsp; ${t(page)}`;
     document.title = `${document.getElementById('breadcrumb').textContent.trim()} · Smart Study`;
     if (page === 'home') main.innerHTML = renderHome();
-    if (page === 'practice') main.innerHTML = state.active && !forceSetup ? renderQuestion() : renderSetup();
+    if (page === 'practice') {
+      main.innerHTML = state.active && !forceSetup ? renderQuestion() : renderSetup();
+      for (const select of main.querySelectorAll('select[data-value]')) select.value = select.dataset.value;
+    }
     if (page === 'mistakes') main.innerHTML = renderMistakes();
     if (page === 'result') main.innerHTML = renderResult();
+    if (page === 'records') main.innerHTML = renderRecords();
     updateStorageNotice();
   }
 
@@ -142,24 +186,147 @@
       <section class="stats-grid" aria-label="${t('workspace')}">${statCard('answered', stats.total, t('questionsUnit'), '▤')}${statCard('accuracy', stats.accuracy === null ? '—' : `${stats.accuracy}%`, stats.accuracy === null ? t('noData') : '', '◎')}${statCard('pending', stats.mistakes, t('questionsUnit'), '▧')}</section>
       <section><div class="section-heading"><h2>${t('subjects')}</h2><span class="section-note">${t('available', { n: subjects.filter(subject => subject.available).length })}</span></div><div class="subject-grid">${subjects.filter(subject => subject.available).map(subject => {
         const stats = Core.getStats(state, questions, subject.id);
-        const total = questions.filter(question => question.subject === subject.id).length;
-        return `<article class="subject-card ${subject.id}"><div class="subject-top"><span class="subject-symbol" aria-hidden="true">${subject.symbol}</span><span class="subject-meta">${t('questionBank', { n: total })}</span></div><h3>${text(subject.label)}</h3><p class="subject-description">${text(subject.description)}</p><div class="subject-footer"><span class="subject-coverage">${t('coverage', { n: stats.unique, total })}</span>${button(t('start'), 'subject', 'secondary', `data-subject="${subject.id}"`)}</div></article>`;
+        const total = questions.filter(question => question.subject === subject.id && !question.diagnosticOnly).length;
+        return `<article class="subject-card ${subject.id}"><div class="subject-top"><span class="subject-symbol" aria-hidden="true">${subject.symbol}</span><span class="subject-meta">${t('questionBank', { n: total })}</span></div><h3>${text(subject.label)}</h3><p class="subject-description">${text(subject.description)}</p><div class="subject-footer"><span class="subject-coverage">${t('coverage', { n: stats.total })}</span>${button(t('start'), 'subject', 'secondary', `data-subject="${subject.id}"`)}</div></article>`;
       }).join('')}</div></section>
       <div class="lower-grid"><section class="panel"><div class="section-heading"><h2>${t('activity')}</h2><span class="section-note">${t('lastWeek')}</span></div><div class="week-chart">${days.map((day, index) => `<div class="chart-column ${index === 6 ? 'today' : ''}" aria-label="${escapeHtml(day.date.toLocaleDateString(locale()))} ${t('questionCount', { n: day.total })}"><span class="bar-number">${day.total}</span><span class="bar-space"><span class="bar" style="height:${Math.max(3, day.total / max * 100)}%"></span></span><span>${index === 6 ? t('today') : escapeHtml(day.date.toLocaleDateString(locale(), { weekday: 'short' }))}</span></div>`).join('')}</div></section>
       <section class="panel"><h2>${t('moreSubjects')}</h2><div class="upcoming-list">${subjects.filter(subject => !subject.available).map(subject => `<div class="upcoming"><span class="upcoming-symbol" aria-hidden="true">${subject.symbol}</span><div>${text(subject.label)}<small>${t('comingSoon')}</small></div></div>`).join('')}</div></section></div>
       <div class="reset-area"><button class="text-button" data-action="clear">${t('clearData')}</button></div>`;
   }
 
-  function setupPool() {
-    return questions.filter(question => question.subject === setup.subject && (setup.difficulty === 'all' || question.difficulty === setup.difficulty));
+  function selectField(id, label, options, selectedValue) {
+    return `<div class="field">
+      <label for="${id}">${label}</label>
+      <select id="${id}" name="${id}" data-value="${escapeHtml(selectedValue)}">${options.map(([value, name]) =>
+        `<option value="${value}">${name}</option>`).join('')}</select>
+    </div>`;
   }
+
+  function renderPlacementPanel(subject, placement, firstVisit) {
+    const math = subject === 'math';
+    const summary = placement
+      ? (math ? t('diagnosticReadyMath') : t('diagnosticReadyEnglish', { level: placement.level }))
+      : t(math ? 'mathDiagnosticInfo' : 'englishDiagnosticInfo');
+    return `<section class="placement-panel" aria-labelledby="placement-heading">
+      <div><h3 id="placement-heading">${t(math ? 'mathDiagnostic' : 'englishDiagnostic')}</h3><p>${summary}</p></div>
+      <div class="inline-actions">
+        ${button(t(placement ? 'retakeDiagnostic' : 'startDiagnostic'), 'diagnostic', firstVisit ? '' : 'secondary', `data-subject="${subject}"`)}
+        ${firstVisit ? button(t('skipPlacement'), 'skip-placement', 'secondary') : ''}
+      </div>
+    </section>`;
+  }
+
+  function renderIELTS() {
+    const bands = Array.from({ length: 17 }, (_, index) => ((index + 2) / 2).toFixed(1));
+    return `<section class="placement-panel ielts-panel" aria-labelledby="ielts-heading">
+      <div><h3 id="ielts-heading">${t('ieltsTrack')}</h3><p>${t('ieltsStatus')}</p></div>
+      ${selectField('ielts-target', t('ieltsTarget'), [['', t('noTarget')], ...bands.map(band => [band, band])], state.preferences.ieltsTarget)}
+    </section>`;
+  }
+
+  function renderEnglishSuggestions() {
+    const suggestions = Learning.englishRecommendations(state);
+    if (!suggestions.length) return '';
+    return `<section class="suggestion-panel" aria-labelledby="suggestion-heading">
+      <h3 id="suggestion-heading">${t('recommendation')}</h3>
+      <ul class="suggestion-list">${suggestions.map(({ topic, count }) => `<li>
+        <div><strong>${text(topics[topic])}</strong><p>${t('englishWeakness', { n: count })}</p></div>
+        ${button(t('practiceTopic'), 'topic-practice', 'secondary', `data-subject="english" data-topic="${topic}"`)}
+      </li>`).join('')}</ul>
+    </section>`;
+  }
+
   function renderSetup() {
-    const pool = setupPool();
-    const count = setup.count === 'all' ? pool.length : Math.min(Number(setup.count), pool.length);
+    const { subject, topic, level, count, track } = setup;
+    const math = subject === 'math';
+    const placement = Learning.latestPlacement(state, subject);
+    const firstVisit = math && !placement && !state.preferences.mathPlacementDeferred;
+    const showIELTS = !math && track === 'ielts';
+    const showPractice = !firstVisit && !showIELTS;
+    const pool = showPractice ? Learning.practicePool(state, setup) : [];
+    const number = count === 'all' ? pool.length : Math.min(Number(count), pool.length);
     const unfinished = state.active;
-    return `<div class="practice-layout">${heading(t('setupTitle'), t('setupSub'))}
-      ${unfinished ? `<div class="resume-banner"><div><strong>${t('unfinished')}</strong><p>${t('progressLabel', { subject: subjects.find(subject => subject.id === unfinished.subject).label[state.language], done: Object.keys(unfinished.answers).length, total: unfinished.questionIds.length })}</p></div>${button(t('resume'), 'resume')}</div>` : ''}
-      <form id="practice-form" class="panel configuration"><h2>${t('settings')}</h2><div class="field-grid"><div class="field"><label for="subject">${t('subject')}</label><select id="subject" name="subject">${subjects.filter(subject => subject.available).map(subject => `<option value="${subject.id}" ${setup.subject === subject.id ? 'selected' : ''}>${text(subject.label)}</option>`).join('')}</select></div><div class="field"><label for="difficulty">${t('difficulty')}</label><select id="difficulty" name="difficulty">${['all', 'easy', 'medium', 'hard'].map(level => `<option value="${level}" ${setup.difficulty === level ? 'selected' : ''}>${t(level === 'all' ? 'allLevels' : level)}</option>`).join('')}</select></div><div class="field"><label for="count">${t('count')}</label><select id="count" name="count">${['5', '8', '12', 'all'].map(value => `<option value="${value}" ${setup.count === value ? 'selected' : ''}>${value === 'all' ? t('allQuestions') : t('questionCount', { n: value })}</option>`).join('')}</select></div></div><p class="setup-info" id="setup-info">${t('setupInfo', { n: pool.length, count })}</p><p class="subtitle">${t('curriculum')}</p><div class="question-bottom"><span></span><button class="button" type="submit" ${!pool.length ? 'disabled' : ''}>${t('start')}</button></div></form></div>`;
+    const autoLabel = math
+      ? (topic ? t('practiceLevel', { level: Learning.mathProfile(state, placement)[topic].level }) : t('autoMath'))
+      : (placement ? t('autoEnglish', { level: placement.level }) : t('starterEnglish'));
+    const subjectOptions = subjects.filter(item => item.available).map(item => [item.id, text(item.label)]);
+    const topicOptions = [['', t('allTopics')], ...topicsBySubject[subject].map(id => [id, text(topics[id])])];
+    const levelOptions = [['auto', autoLabel], ...levels[subject].map(item => [item, item])];
+    const countOptions = ['5', '8', '12', '20', 'all'].map(value =>
+      [value, value === 'all' ? t('allQuestions') : t('questionCount', { n: value })]);
+
+    return `<div class="practice-layout">
+      ${heading(t('setupTitle'), t('setupSub'))}
+      ${unfinished ? `<div class="resume-banner">
+        <div><strong>${t('unfinished')}</strong><p>${t('progressLabel', {
+          subject: subjects.find(item => item.id === unfinished.subject).label[state.language],
+          done: Object.keys(unfinished.answers).length, total: unfinished.questionIds.length
+        })}</p></div>${button(t('resume'), 'resume')}
+      </div>` : ''}
+      <form id="practice-form" class="panel configuration">
+        <h2>${t('settings')}</h2>
+        <div class="field-grid subject-field">${selectField('subject', t('subject'), subjectOptions, subject)}</div>
+        ${math ? '' : `<div class="filters study-tracks">${[['cefr', 'cefrTrack'], ['ielts', 'ieltsTrack']].map(([id, label]) =>
+          `<button type="button" class="filter-button ${id === track ? 'active' : ''}" data-action="track" data-track="${id}" aria-pressed="${id === track}">${t(label)}</button>`).join('')}</div>`}
+        ${showIELTS ? renderIELTS() : renderPlacementPanel(subject, placement, firstVisit)}
+        ${showPractice ? `
+          ${math ? '' : renderEnglishSuggestions()}
+          <div class="field-grid practice-fields">
+            ${selectField('topic', t('topic'), topicOptions, topic)}
+            ${selectField('difficulty', t('difficulty'), levelOptions, level)}
+            ${selectField('count', t('count'), countOptions, count)}
+          </div>
+          <p class="field-help">${t(math ? 'mathScale' : 'cefrScope')}</p>
+          <p class="setup-info" id="setup-info" role="status">${pool.length
+            ? t('setupInfo', { n: pool.length, count: number }) : t('emptyMatch')}</p>
+          <p class="inline-error" id="practice-error" role="alert" hidden></p>
+          <div class="setup-submit"><button class="button" type="submit" ${!pool.length ? 'disabled' : ''}>${t('start')}</button></div>
+          ${math ? `<details class="curriculum-plan">
+            <summary>${t('curriculumPlan')}</summary><p>${t('curriculumStatus')}</p>
+            <ul>${curricula.map(item => `<li>${text(item.label)}</li>`).join('')}</ul>
+          </details>` : ''}
+        ` : '<p class="inline-error" id="practice-error" role="alert" hidden></p>'}
+      </form>
+    </div>`;
+  }
+
+  function renderRecords() {
+    const rows = Learning.topicProgress(state);
+    const math = Learning.mathProfile(state);
+    const english = Learning.latestPlacement(state, 'english');
+    const preferredEnglish = state.preferences.englishLevel;
+    const ieltsTarget = state.preferences.ieltsTarget;
+    return `${heading(t('recordTitle'), t('recordSubtitle'))}
+      <section class="records-section" aria-labelledby="math-records">
+        <div class="section-heading"><h2 id="math-records">${subjectName('math')}</h2></div>
+        <p class="records-note">${t('evidenceNote')}</p>
+        <div class="records-grid">${topicsBySubject.math.map(topic => renderTopicRecord('math', topic, rows[topic], math[topic])).join('')}</div>
+      </section>
+      <section class="records-section" aria-labelledby="english-records">
+        <div class="section-heading"><h2 id="english-records">${subjectName('english')}</h2></div>
+        <p class="records-note">${preferredEnglish ? t('selfSelected', { level: preferredEnglish })
+          : english ? t('singleEnglish', { level: english.level }) : t('unassessed')}</p>
+        ${ieltsTarget ? `<p class="records-note">${t('targetSummary', { band: ieltsTarget })}</p>` : ''}
+        <div class="records-grid">${topicsBySubject.english.map(topic => renderTopicRecord('english', topic, rows[topic])).join('')}</div>
+      </section>`;
+  }
+
+  function renderTopicRecord(subject, topic, row, profile) {
+    const status = profile
+      ? t(({ starting: 'starting', diagnostic: 'diagnostic', practice: 'practiceLevel' })[profile.basis], { level: profile.level }) : '';
+    const period = (label, data) => `<div><dt>${t(label)}</dt><dd>${data.total ? t('correctFraction', data) : '—'}</dd></div>`;
+    return `<article class="panel topic-record" data-topic="${topic}">
+      <div class="topic-record-heading"><h3>${text(topics[topic])}</h3>${status ? `<span class="tag">${status}</span>` : ''}</div>
+      <p>${row.total ? t('recordTotals', row) : t('recordEmpty')}</p>
+      <dl class="record-periods">${period('recentPeriod', row.recent)}${period('earlierPeriod', row.previous)}</dl>
+      ${profile?.lastBatch ? `<p class="field-help">${t('batchEvidence', profile.lastBatch)}</p>` : ''}
+      ${profile ? `<p class="field-help">${t('evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
+      ${button(t('practiceTopic'), 'topic-practice', 'secondary', `data-subject="${subject}" data-topic="${topic}"`)}
+    </article>`;
+  }
+
+  function modeLabel(mode) {
+    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode' })[mode]);
   }
 
   function renderQuestion() {
@@ -167,19 +334,59 @@
     const question = byId.get(session.questionIds[session.index]);
     const answer = session.answers[question.id];
     const graded = answer !== undefined;
+    const diagnostic = session.mode === 'diagnostic';
+    const hasHint = !diagnostic && Boolean(question.hint);
+    const hinted = session.hintedQuestionIds.includes(question.id);
     if (selectedQuestion !== `${session.id}/${question.id}`) {
       selected = null;
       selectedQuestion = `${session.id}/${question.id}`;
     }
     const choice = graded ? answer : selected;
     const correct = graded && answer === question.answer;
-    return `<div class="practice-layout"><div class="page-heading"><div><p class="eyebrow">${t(session.mode === 'review' ? 'reviewMode' : 'practiceMode')}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div><div class="question-top"><span>${t('progress', { current: session.index + 1, total: session.questionIds.length })}</span><span>${t('progressLabel', { subject: subjects.find(subject => subject.id === session.subject).label[state.language], done: Object.keys(session.answers).length, total: session.questionIds.length })}</span></div><div class="progress" role="progressbar" aria-label="${t('answered')}" aria-valuemin="0" aria-valuemax="${session.questionIds.length}" aria-valuenow="${Object.keys(session.answers).length}"><div class="progress-fill" style="width:${Object.keys(session.answers).length / session.questionIds.length * 100}%"></div></div>
-      <section class="panel question-card"><div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${t(question.difficulty)}</span></div><h2 id="question-title" class="question-title">${text(question.prompt)}</h2><div class="options" role="radiogroup" aria-labelledby="question-title">${question.options.map((option, index) => {
-        const correctOption = graded && index === question.answer;
-        const wrongOption = graded && index === answer && !correct;
-        const chosen = choice === index;
-        return `<button class="option ${chosen ? 'selected' : ''} ${correctOption ? 'correct' : ''} ${wrongOption ? 'incorrect' : ''}" role="radio" aria-checked="${chosen}" data-action="choose" data-choice="${index}" tabindex="${chosen || (choice === null && index === 0) ? '0' : '-1'}" ${graded ? 'disabled' : ''}><span class="option-letter" aria-hidden="true">${'ABCD'[index]}</span><span>${text(option)}</span>${correctOption || wrongOption ? `<span class="option-feedback" aria-hidden="true">${correctOption ? '✓' : '×'}</span>` : ''}</button>`;
-      }).join('')}</div>${graded ? `<div class="feedback ${correct ? '' : 'wrong'}"><h3 id="feedback-title" tabindex="-1">${t(correct ? 'correct' : 'incorrect')}</h3><p class="answer-line">${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}</p><p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p></div>` : ''}<div class="question-bottom"><p class="question-hint">${t(graded ? 'gradedHint' : 'selectHint')}</p>${graded ? button(t(session.index === session.questionIds.length - 1 ? 'finish' : 'next'), 'next') : button(t('submit'), 'grade', '', selected === null ? 'disabled' : '')}</div></section></div>`;
+    const showGrade = graded && !diagnostic;
+    const done = Object.keys(session.answers).length;
+    const total = session.questionIds.length;
+    const options = question.options.map((option, index) => {
+      const correctOption = showGrade && index === question.answer;
+      const wrongOption = showGrade && index === answer && !correct;
+      const chosen = choice === index;
+      return `<button type="button" class="option ${chosen ? 'selected' : ''} ${correctOption ? 'correct' : ''} ${wrongOption ? 'incorrect' : ''}"
+        role="radio" aria-checked="${chosen}" data-action="choose" data-choice="${index}" tabindex="${chosen || (choice === null && index === 0) ? '0' : '-1'}" ${graded ? 'disabled' : ''}>
+        <span class="option-letter" aria-hidden="true">${'ABCD'[index]}</span><span>${text(option)}</span>
+        ${correctOption || wrongOption ? `<span class="option-feedback" aria-hidden="true">${correctOption ? '✓' : '×'}</span>` : ''}
+      </button>`;
+    }).join('');
+    const feedback = diagnostic
+      ? `<div class="feedback diagnostic-feedback"><h3 id="feedback-title" tabindex="-1">${t('diagnosticSubmitted')}</h3></div>`
+      : `<div class="feedback ${correct ? '' : 'wrong'}">
+        <h3 id="feedback-title" tabindex="-1">${t(correct ? 'correct' : 'incorrect')}</h3>
+        <p class="answer-line">${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}</p>
+        <p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p>
+      </div>`;
+    return `<div class="practice-layout">
+      <div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
+      <div class="question-top"><span>${t('progress', { current: session.index + 1, total })}</span>
+        <span>${t('progressLabel', { subject: subjects.find(item => item.id === session.subject).label[state.language], done, total })}</span></div>
+      <div class="progress" role="progressbar" aria-label="${t('answered')}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}">
+        <div class="progress-fill" style="width:${done / total * 100}%"></div>
+      </div>
+      <section class="panel question-card">
+        <div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${escapeHtml(question.level)}</span>
+          ${question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
+        <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
+        <div class="options" role="radiogroup" aria-labelledby="question-title">${options}</div>
+        ${hasHint && !graded ? `<div class="hint-area">
+          ${hinted ? `<p id="question-hint" class="hint-content" tabindex="-1"><strong>${t('hint')}</strong> ${text(question.hint)}</p>`
+            : button(t('showHint'), 'hint', 'secondary', 'aria-expanded="false"')}
+        </div>` : ''}
+        ${graded ? feedback : ''}
+        <div class="question-bottom">
+          <p class="question-hint">${t(graded ? (diagnostic ? 'diagnosticMode' : hinted ? 'hintUsed' : 'gradedHint') : 'selectHint')}</p>
+          ${graded ? button(t(session.index === total - 1 ? 'finish' : 'next'), 'next')
+            : button(t('submit'), 'grade', '', selected === null ? 'disabled' : '')}
+        </div>
+      </section>
+    </div>`;
   }
 
   function renderMistakes() {
@@ -193,16 +400,51 @@
       ${filtered.length ? `<div class="review-actions">${reviewButtons}</div><div class="mistake-list">${filtered.map(({ question, attempt, wrongCount }) => `<article class="mistake-card"><div class="mistake-meta"><span>${subjectName(question.subject)} · ${text(topics[question.topic])}</span><span>${t('wrongCount', { n: wrongCount })}</span></div><h3>${text(question.prompt)}</h3><p class="mistake-answer">${t('yourAnswer', { answer: `${'ABCD'[attempt.choice]} · ${question.options[attempt.choice][state.language]}` })}</p><details><summary>${t('explanation')}</summary><p><strong>${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}</strong><br>${text(question.explanation)}</p></details><div class="question-bottom"><span class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))}</span>${button(t('reviewOne'), 'review-one', 'secondary', `data-id="${question.id}"`)}</div></article>`).join('')}</div>` : `<section class="panel empty-state"><span class="empty-symbol" aria-hidden="true">✓</span><h2>${t('emptyTitle')}</h2><p>${t('emptyText')}</p>${button(t('start'), 'setup')}</section>`}`;
   }
 
+  function renderPlacementResult(result) {
+    if (!result) return '';
+    return `<section class="panel placement-result" aria-labelledby="placement-result-title">
+      <h2 id="placement-result-title">${t('diagnosticComplete')}</h2>
+      <p>${t('diagnosticCaution')}</p>
+      ${result.topics ? `<ul>${Object.entries(result.topics).map(([topic, info]) => `<li>
+        <strong>${text(topics[topic])}</strong>
+        <span>${t('diagnostic', { level: info.level })} · ${t('correctFraction', info)}</span>
+      </li>`).join('')}</ul>` : `<p><strong>${t('singleEnglish', { level: result.level })}</strong></p><p>${t('cefrScope')}</p>`}
+    </section>`;
+  }
+
   function renderResult() {
-    const session = state.sessions.find(session => session.id === resultId) || state.sessions.at(-1);
+    const session = state.sessions.find(item => item.id === resultId) || state.sessions.at(-1);
     if (!session) return `<section class="panel empty-state"><h1>${t('result')}</h1><p>${t('emptyText')}</p>${button(t('start'), 'setup')}</section>`;
     const attempts = state.attempts.filter(attempt => attempt.sessionId === session.id);
     const wrong = attempts.filter(attempt => !attempt.correct);
-    return `<div class="practice-layout"><section class="panel result-panel"><p class="eyebrow">${subjectName(session.subject)} · ${t(session.mode === 'review' ? 'reviewMode' : 'practiceMode')}</p><h1>${t('complete')}</h1><div class="result-score">${Math.round(session.correct / session.questionIds.length * 100)}<small>%</small></div><span class="section-note">${t('roundAccuracy')}</span><p>${t('resultSub', { correct: session.correct, total: session.questionIds.length })}</p><div class="result-buttons">${button(t('newPractice'), 'setup')}${wrong.length ? button(t('reviewWrong'), 'review-result', 'secondary', `data-session="${session.id}"`) : button(t('exit'), 'home', 'secondary')}</div></section><section class="result-list"><h2>${t('answerDetails')}</h2>${session.questionIds.map(id => {
-      const question = byId.get(id);
-      const attempt = attempts.find(attempt => attempt.questionId === id);
-      return `<div class="result-row ${attempt.correct ? '' : 'wrong'}"><span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span><details><summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary><p>${t('yourAnswer', { answer: `${'ABCD'[attempt.choice]} · ${question.options[attempt.choice][state.language]}` })}<br>${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}<br>${text(question.explanation)}</p></details></div>`;
-    }).join('')}</section></div>`;
+    const placement = Learning.placementResult(state, session);
+    return `<div class="practice-layout">
+      <section class="panel result-panel">
+        <p class="eyebrow">${subjectName(session.subject)} · ${modeLabel(session.mode)}</p>
+        <h1>${t('complete')}</h1>
+        <div class="result-score">${Math.round(session.correct / session.questionIds.length * 100)}<small>%</small></div>
+        <span class="section-note">${t('roundAccuracy')}</span>
+        <p>${t('resultSub', { correct: session.correct, total: session.questionIds.length })}</p>
+        <div class="result-buttons">
+          ${button(t('newPractice'), 'subject', '', `data-subject="${session.subject}"`)}
+          ${wrong.length ? button(t('reviewWrong'), 'review-result', 'secondary', `data-session="${escapeHtml(session.id)}"`) : button(t('records'), 'records', 'secondary')}
+        </div>
+      </section>
+      ${renderPlacementResult(placement)}
+      <section class="result-list"><h2>${t('answerDetails')}</h2>${session.questionIds.map(id => {
+        const question = byId.get(id);
+        const attempt = attempts.find(item => item.questionId === id);
+        return `<div class="result-row ${attempt.correct ? '' : 'wrong'}">
+          <span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span>
+          <details>
+            <summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary>
+            <p>${t('yourAnswer', { answer: `${'ABCD'[attempt.choice]} · ${question.options[attempt.choice][state.language]}` })}<br>
+            ${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}<br>
+            ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>
+          </details>
+        </div>`;
+      }).join('')}</section>
+    </div>`;
   }
 
   function confirmAction(title, description, action) {
@@ -216,32 +458,72 @@
     return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }));
   }
   async function begin(options) {
-    if (state.active && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
-    commit(current => Core.startSession(current, questions, options));
+    const previousId = state.active?.id;
+    if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
+    commit(current => {
+      if (current.active?.id !== previousId) throw new Error('The active practice changed');
+      if (options.ids) return Core.startSession(current, questions, options);
+      const ids = Learning.practiceIds(current, options);
+      const count = options.count === 'all' ? ids.length : Number(options.count);
+      return Core.startSession(current, questions, { ...options, ids, count });
+    });
     forceSetup = false;
     selected = null;
     go('practice');
+    window.scrollTo(0, 0);
     main.focus();
+  }
+  function openSetup(subject, topic = '') {
+    setup = {
+      ...setup, subject, topic, track: 'cefr',
+      level: subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
+    };
+    forceSetup = true;
+    go('practice');
   }
   function announce(message) {
     document.getElementById('announcement').innerHTML = message;
   }
+  function reportSetupError(message) {
+    const error = document.getElementById('practice-error');
+    if (!error) { announce(message); return; }
+    error.innerHTML = message;
+    error.hidden = false;
+  }
+  document.getElementById('skip-link').addEventListener('click', event => {
+    event.preventDefault();
+    main.focus();
+    main.scrollIntoView();
+  });
   document.getElementById('language').addEventListener('change', event => {
     const language = event.target.value;
     commit(current => ({ ...current, language }));
     render();
   });
   main.addEventListener('change', event => {
-    if (!['subject', 'difficulty', 'count'].includes(event.target.id)) return;
-    setup[event.target.id] = event.target.value;
-    const pool = setupPool();
-    document.getElementById('setup-info').innerHTML = t('setupInfo', { n: pool.length, count: setup.count === 'all' ? pool.length : Math.min(Number(setup.count), pool.length) });
+    const { id, value } = event.target;
+    if (!['subject', 'topic', 'difficulty', 'count', 'ielts-target'].includes(id)) return;
+    if (id === 'subject') {
+      openSetup(value);
+    } else {
+      if (id === 'ielts-target') commit(current => Core.updatePreferences(current, { ieltsTarget: value }));
+      else if (id === 'difficulty') {
+        setup.level = value;
+        if (setup.subject === 'english') commit(current => Core.updatePreferences(current, { englishLevel: value }));
+      } else {
+        setup[id] = value;
+      }
+      render();
+    }
+    document.getElementById(id)?.focus();
   });
   main.addEventListener('submit', async event => {
     if (event.target.id !== 'practice-form') return;
     event.preventDefault();
-    try { await begin({ ...setup, count: setup.count === 'all' ? setupPool().length : Number(setup.count) }); }
-    catch (_) { announce(t('noMatch')); }
+    const submit = event.target.querySelector('button[type="submit"]');
+    if (!submit || submit.disabled) return;
+    try { await begin({ ...setup }); }
+    catch (_) { reportSetupError(t('noMatch')); }
   });
   main.addEventListener('click', async event => {
     const target = event.target.closest('[data-action]');
@@ -263,16 +545,49 @@
         render();
         document.getElementById('feedback-title')?.focus();
       }
+      if (action === 'hint') {
+        const active = state.active;
+        commit(current => {
+          if (current.active?.id !== active?.id || current.active?.index !== active?.index) return current;
+          return Core.revealHint(current, questions);
+        });
+        render();
+        document.getElementById('question-hint')?.focus();
+      }
       if (action === 'next') {
-        commit(current => Core.advanceSession(current, questions));
+        const active = state.active;
+        let advanced = false;
+        commit(current => {
+          if (current.active?.id !== active?.id || current.active?.index !== active?.index) return current;
+          const updated = Core.advanceSession(current, questions);
+          advanced = true;
+          return updated;
+        });
+        if (!advanced) { render(); announce(t('changed')); return; }
         selected = null;
         if (state.active) { render(); document.getElementById('question-title').setAttribute('tabindex', '-1'); document.getElementById('question-title').focus(); }
         else { resultId = state.sessions.at(-1).id; go('result'); main.focus(); }
       }
       if (action === 'home') go('home');
+      if (action === 'records') go('records');
       if (action === 'resume') { forceSetup = false; go('practice'); }
       if (action === 'setup') { forceSetup = true; go('practice'); }
-      if (action === 'subject') { setup.subject = target.dataset.subject; forceSetup = true; go('practice'); }
+      if (action === 'subject' || action === 'topic-practice') openSetup(target.dataset.subject, target.dataset.topic);
+      if (action === 'skip-placement') {
+        commit(current => Core.updatePreferences(current, { mathPlacementDeferred: true }));
+        render();
+        document.getElementById('topic')?.focus();
+      }
+      if (action === 'diagnostic') {
+        const subject = target.dataset.subject;
+        const ids = Learning.diagnosticIds(subject);
+        await begin({ subject, ids, count: ids.length, mode: 'diagnostic' });
+      }
+      if (action === 'track') {
+        setup.track = target.dataset.track;
+        render();
+        main.querySelector(`[data-track="${setup.track}"]`)?.focus();
+      }
       if (action === 'filter') { mistakeFilter = target.dataset.filter; render(); }
       if (action === 'review' || action === 'review-one') {
         const subject = action === 'review-one' ? byId.get(target.dataset.id).subject : target.dataset.subject;
@@ -289,9 +604,10 @@
         commit(() => ({ ...Core.createState(), language }));
         selected = null;
         resultId = null;
+        setup = { subject: 'english', level: 'auto', topic: '', count: '8', track: 'cefr' };
         render();
       }
-    } catch (_) { render(); announce(t('error')); }
+    } catch (_) { render(); reportSetupError(t('error')); }
   });
   main.addEventListener('keydown', event => {
     if (!event.target.matches('[role="radio"]') || event.target.disabled) return;
@@ -311,8 +627,9 @@
     main.focus();
   });
   window.addEventListener('storage', event => {
-    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    if (event.key !== STORAGE_KEY && event.key !== LEGACY_STORAGE_KEY && event.key !== null) return;
     state = loadState();
+    if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
     selected = null;
     render();
     announce(t('changed'));
@@ -320,7 +637,7 @@
   render();
   if (new URLSearchParams(location.search).get('test') === '1') {
     const script = document.createElement('script');
-    script.src = 'tests.js';
+    script.src = 'tests.js?v=2';
     document.body.appendChild(script);
   }
 })();
