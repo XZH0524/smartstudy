@@ -103,6 +103,7 @@
     }
 
     function renderClue(question, attempt) {
+      if (question.fields) return '';
       const focus = Coach.mistakeFocus(question, attempt);
       if (!focus) return `<p class="field-help">${t('coachAmbiguous')}</p>`;
       const kind = Science.errorLabels[question.errorKinds?.[attempt.choice]];

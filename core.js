@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const VERSION = 5;
+  const VERSION = 6;
   const AI = globalThis.EachVeyaAi;
   const { levels: { english: englishLevels }, topicsBySubject } = globalThis.SmartStudyData;
   const SkillData = globalThis.EachVeyaSkills;
@@ -10,7 +10,7 @@
   const focusModes = ['probe', 'retake', 'spaced'];
   const flagReasons = ['wording', 'answer', 'translation'];
   const hasDelayedFeedback = mode => mode === 'diagnostic' || focusModes.includes(mode);
-  const sessionMode = value => ['review', 'diagnostic', 'ai', 'science-ai', ...focusModes].includes(value) ? value : 'practice';
+  const sessionMode = value => ['review', 'diagnostic', 'ai', 'science-ai', 'algebra-sample', ...focusModes].includes(value) ? value : 'practice';
   const isValidDuration = value => Number.isInteger(value) && value > 0 && value <= 600_000;
 
   function focusFor(value, mode, subject) {
@@ -48,8 +48,23 @@
       ? [...questions, ...state.generated.map(spec => SkillData.decorateEquation(AI.makeQuestion(spec), spec))] : questions;
   }
 
+  const responseOf = attempt => attempt.response ?? attempt.choice;
+
+  function evaluateAnswer(question, response) {
+    if (!question) return null;
+    if (!question.fields) {
+      return Number.isInteger(response) && response >= 0 && response < question.options.length
+        ? { choice: response, correct: response === question.answer } : null;
+    }
+    if (!Array.isArray(response) || response.length !== question.fields.length) return null;
+    const numbers = Array.from(response, AI.parseNumber);
+    if (numbers.some(number => !number)) return null;
+    const marks = numbers.map((number, index) => number.numerator === BigInt(question.fields[index].expected) * number.denominator);
+    return { response: numbers.map(number => number.text), correct: marks.every(Boolean), marks };
+  }
+
   function normalizeState(raw, questions) {
-    if (!raw || ![1, 2, 3, 4, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || ![1, 2, 3, 4, 5, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
     const generated = [];
@@ -57,9 +72,11 @@
     for (const stored of raw.version >= 3 && Array.isArray(raw.generated) ? raw.generated : []) {
       const spec = AI.normalizeSpec(stored, stored?.level);
       if (!spec) continue;
-      const key = AI.signature(spec);
-      if (used.has(key)) continue;
-      used.add(key);
+      if (raw.version >= 6 && ['fill', 'calculation'].includes(stored.format)) spec.format = stored.format;
+      if (raw.version >= 6 && stored.source === 'template') spec.source = 'template';
+      const id = AI.questionId(spec);
+      if (used.has(id)) continue;
+      used.add(id);
       generated.push(spec);
     }
     const byId = new Map(questionsForState(questions, { generated }).map(question => [question.id, question]));
@@ -67,14 +84,15 @@
     const attempts = [];
     for (const entry of raw.attempts) {
       const question = byId.get(entry?.questionId);
-      if (!question || typeof entry.sessionId !== 'string' || !entry.sessionId || !dateIsValid(entry.at)
-        || !Number.isInteger(entry.choice) || entry.choice < 0 || entry.choice >= question.options.length) continue;
+      if (!question || typeof entry.sessionId !== 'string' || !entry.sessionId || !dateIsValid(entry.at)) continue;
+      const score = evaluateAnswer(question, responseOf(entry));
+      if (!score) continue;
       if (!attemptsBySession.has(entry.sessionId)) attemptsBySession.set(entry.sessionId, new Map());
       const submitted = attemptsBySession.get(entry.sessionId);
       if (submitted.has(question.id)) continue;
 
       const attempt = {
-        sessionId: entry.sessionId, questionId: question.id, choice: entry.choice, correct: entry.choice === question.answer, at: entry.at,
+        sessionId: entry.sessionId, questionId: question.id, ...answerRecord(score), at: entry.at,
         mode: raw.version === 1 || entry.mode === 'legacy' ? 'legacy' : sessionMode(entry.mode),
         hinted: raw.version === 1 || typeof entry.hinted !== 'boolean' ? null : entry.hinted
       };
@@ -110,7 +128,7 @@
         .filter(id => byId.has(id) && byId.get(id).subject === saved.subject);
       if (questionIds.length) {
         const submitted = attemptsBySession.get(saved.id);
-        const answers = Object.fromEntries(questionIds.filter(id => submitted?.has(id)).map(id => [id, submitted.get(id).choice]));
+        const answers = Object.fromEntries(questionIds.filter(id => submitted?.has(id)).map(id => [id, responseOf(submitted.get(id))]));
         const firstUnanswered = questionIds.findIndex(id => answers[id] === undefined);
         const requestedIndex = Number.isInteger(saved.index) ? saved.index : 0;
         const lastAvailableIndex = firstUnanswered < 0 ? questionIds.length - 1 : firstUnanswered;
@@ -217,12 +235,29 @@
     } };
   }
 
-  function startAiSession(state, questions, level, items) {
-    const specs = AI.validateBatch(items, level, state.generated);
+  function startEquationSession(state, questions, specs, format, sample) {
+    if (!AI.ROUND_FORMATS.includes(format)) throw new Error('Unsupported exercise format');
+    const batch = specs.map((spec, index) => {
+      const type = format === 'mixed' ? AI.FORMATS[index] : format;
+      return { ...spec, ...(type === 'choice' ? {} : { format: type }), ...(sample ? { source: 'template' } : {}) };
+    });
+    const seen = new Set(state.generated.map(AI.questionId));
+    const next = { ...state, generated: [...state.generated, ...batch.filter(spec => !seen.has(AI.questionId(spec)))] };
+    const ids = batch.map(AI.questionId);
+    return startSession(next, questionsForState(questions, next),
+      { subject: 'math', ids, count: ids.length, mode: sample ? 'algebra-sample' : 'ai' });
+  }
+
+  function startAiSession(state, questions, level, items, format = 'choice') {
+    const specs = AI.validateBatch(items, level, state.generated.filter(spec => spec.source !== 'template'));
     if (!specs) throw new Error('Invalid generated questions');
-    const next = { ...state, generated: [...(state.generated || []), ...specs] };
-    const ids = specs.map(spec => AI.makeQuestion(spec).id);
-    return startSession(next, questionsForState(questions, next), { subject: 'math', ids, count: ids.length, mode: 'ai' });
+    return startEquationSession(state, questions, specs, format, false);
+  }
+
+  function startAlgebraSample(state, questions, level, format) {
+    const specs = AI.sampleBatch(level);
+    if (!specs) throw new Error('Invalid practice templates');
+    return startEquationSession(state, questions, specs, format, true);
   }
 
   function revealHint(state, questions) {
@@ -234,19 +269,24 @@
     return { ...state, active: { ...session, hintedQuestionIds: [...session.hintedQuestionIds, id] } };
   }
 
-  function gradeAnswer(state, questions, choice, at = new Date().toISOString(), durationMs) {
+  function answerRecord(score) {
+    return { ...(score.response ? { response: score.response } : { choice: score.choice }), correct: score.correct };
+  }
+
+  function gradeAnswer(state, questions, response, at = new Date().toISOString(), durationMs) {
     const session = state.active;
     if (!session) throw new Error('No active session');
     const question = questions.find(item => item.id === session.questionIds[session.index]);
-    if (!question || !Number.isInteger(choice) || choice < 0 || choice >= question.options.length) throw new Error('Invalid answer');
+    const score = evaluateAnswer(question, response);
+    if (!score) throw new Error('Invalid answer');
     if (!dateIsValid(at)) throw new Error('Invalid timestamp');
     if (session.answers[question.id] !== undefined) return state;
     const attempt = {
-      sessionId: session.id, questionId: question.id, choice, correct: choice === question.answer, at,
+      sessionId: session.id, questionId: question.id, ...answerRecord(score), at,
       mode: session.mode, hinted: session.hintedQuestionIds.includes(question.id),
       ...(session.focus ? { focus: session.focus } : {}), ...(isValidDuration(durationMs) ? { durationMs } : {})
     };
-    return { ...state, attempts: [...state.attempts, attempt], active: { ...session, answers: { ...session.answers, [question.id]: choice } } };
+    return { ...state, attempts: [...state.attempts, attempt], active: { ...session, answers: { ...session.answers, [question.id]: responseOf(attempt) } } };
   }
 
   function advanceSession(state, questions, at = new Date().toISOString()) {
@@ -257,7 +297,7 @@
     const byId = new Map(questions.map(question => [question.id, question]));
     const completed = {
       id: session.id, subject: session.subject, mode: session.mode, questionIds: [...session.questionIds],
-      correct: session.questionIds.filter(id => session.answers[id] === byId.get(id).answer).length, completedAt: at,
+      correct: session.questionIds.filter(id => evaluateAnswer(byId.get(id), session.answers[id])?.correct).length, completedAt: at,
       ...(session.focus ? { focus: session.focus } : {})
     };
     return { ...state, active: null, sessions: [...state.sessions, completed] };
@@ -278,7 +318,8 @@
 
   globalThis.SmartStudyCore = {
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
-    shuffled, chooseQuestions, startSession, startAiSession, revealHint, gradeAnswer, advanceSession, localDate, dailyStats,
+    shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf,
+    advanceSession, localDate, dailyStats,
     reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes
   };
 })();

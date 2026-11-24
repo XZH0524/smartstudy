@@ -9,7 +9,8 @@
   const Science = globalThis.EachVeyaScience;
   const { questions, subjects, topics, topicsBySubject, levels, skills, curricula } = globalThis.SmartStudyData;
   const byId = new Map(questions.map(question => [question.id, question]));
-  const key = 'smart-study.tests.v5';
+  const key = `smart-study.tests.v${Core.VERSION}`;
+  const v5Key = 'smart-study.tests.v5';
   const v4Key = 'smart-study.tests.v4';
   const v3Key = 'smart-study.tests.v3';
   const previousKey = 'smart-study.tests.v2';
@@ -829,6 +830,59 @@
     throws(() => Core.startAiSession(state, questions, 'L2', aiFixture));
   });
 
+  await test('混合 AI 练习包含真实填空与分步计算，会精确验算分数和小数', () => {
+    let state = Core.startAiSession(Core.createState(), questions, 'L2', aiFixture, 'mixed');
+    const catalog = Core.questionsForState(questions, state);
+    const [fill, calculation, choice] = state.active.questionIds.map(id => catalog.find(item => item.id === id));
+    equal([fill.format, calculation.format, choice.format], ['fill', 'calculation', undefined]);
+    equal([fill.fields.length, calculation.fields.length], [1, 2]);
+    for (const response of [['8/2'], [' ４．０ '], ['−8 / −2'], ['+4']]) {
+      assert(Core.evaluateAnswer(fill, response).correct);
+    }
+    assert(!Core.evaluateAnswer(fill, ['4.0000000000000001']).correct);
+    for (const response of [[], [''], ['1/0'], ['4e0'], ['4+0'], ['⁴'], ['<script>'], 0]) {
+      equal(Core.evaluateAnswer(fill, response), null);
+      throws(() => Core.gradeAnswer(state, catalog, response));
+    }
+    state = Core.gradeAnswer(state, catalog, [' ８ / ２ '], knownTime);
+    equal(state.attempts.at(-1).response, ['8/2']);
+    equal(state.attempts.at(-1).choice, undefined);
+    const restored = Backup.parse(Backup.serialize(state), questions);
+    equal(restored.active.answers[fill.id], ['8/2']);
+    equal(Core.gradeAnswer(restored, catalog, ['3'], knownTime), restored);
+    state = Core.advanceSession(restored, catalog);
+    equal(Core.evaluateAnswer(calculation, ['18.0', '7/2']).marks, [true, false]);
+    state = Core.advanceSession(Core.gradeAnswer(state, catalog, ['18.0', '7/2'], knownTime), catalog);
+    state = Core.advanceSession(Core.gradeAnswer(state, catalog, choice.answer, knownTime), catalog);
+    equal(state.sessions.at(-1).correct, 2);
+    equal(Core.getMistakes(state, catalog)[0].question.id, calculation.id);
+    equal(Backup.merge(state, Backup.parse(Backup.serialize(state), questions), questions).attempts, state.attempts);
+  });
+
+  await test('旧 AI 选择题沿用原题号，免费样题可以换题型反复练且各题只存一次', () => {
+    const old = Core.startAiSession(Core.createState(), questions, 'L2', aiFixture);
+    const legacy = { ...old, version: 5 };
+    const catalog = Core.questionsForState(questions, legacy);
+    const first = catalog.find(item => item.id === old.active.questionIds[0]);
+    const answered = Core.gradeAnswer(legacy, catalog, first.answer, knownTime);
+    const migrated = Backup.parse(JSON.stringify(answered), questions);
+    equal(migrated.active.questionIds, legacy.active.questionIds);
+    equal(migrated.active.answers[first.id], first.answer);
+    equal(migrated.attempts[0].correct, true);
+    assert(!first.fields);
+    for (const level of AI.LEVELS) {
+      const initial = Core.startAlgebraSample(Core.createState(), questions, level, 'calculation');
+      const repeat = Core.startAlgebraSample(initial, questions, level, 'calculation');
+      equal(repeat.active.questionIds, initial.active.questionIds);
+      equal(repeat.generated.length, 3);
+      const filled = Core.startAlgebraSample(repeat, questions, level, 'fill');
+      equal(filled.generated.length, 6);
+      const samples = Core.questionsForState(questions, filled).filter(item => item.sample);
+      assert(samples.length === 6 && samples.every(item => !item.ai && item.level === level));
+      equal(Backup.parse(Backup.serialize(filled), questions).generated.length, 6);
+    }
+  });
+
   if (typeof document === 'undefined') {
     globalThis.SmartStudyTestResults = results;
     return;
@@ -871,7 +925,7 @@
   }
 
   const waitElement = selector => waitFor(() => document.querySelector(selector), `Missing ${selector}`);
-  const read = () => Core.readState(localStorage, key, [previousKey, legacyKey], questions);
+  const read = () => Core.readState(localStorage, key, [v5Key, v4Key, v3Key, previousKey, legacyKey], questions);
   const replayStorage = name => window.dispatchEvent(new StorageEvent('storage', { key: name }));
   const current = () => {
     const state = read();
@@ -886,6 +940,7 @@
 
   async function resetUi() {
     localStorage.removeItem(key);
+    localStorage.removeItem(v5Key);
     localStorage.removeItem(v4Key);
     localStorage.removeItem(v3Key);
     localStorage.removeItem(previousKey);
@@ -903,9 +958,14 @@
 
   async function answerUi(correct) {
     const item = current();
-    const answer = correct ? item.answer : (item.answer + 1) % 4;
-    click(`[data-choice="${answer}"]`);
-    click('[data-action="grade"]');
+    if (item.fields) {
+      item.fields.forEach((field, index) => { element(`#numeric-${index}`).value = String(field.expected + (!correct && index === 0 ? 1 : 0)); });
+      click('button[form="numeric-answer-form"]');
+    } else {
+      const answer = correct ? item.answer : (item.answer + 1) % 4;
+      click(`[data-choice="${answer}"]`);
+      click('[data-action="grade"]');
+    }
     await waitElement('.feedback');
   }
 
@@ -1325,6 +1385,50 @@
     }
   });
 
+  await test('免费试做支持选题型，单独检查每个步骤，输入格式错误可更正后提交', async () => {
+    await resetUi();
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = () => { throw new Error('Sample practice made a network request'); };
+    try {
+      await openSubject('math');
+      click('[data-action="skip-placement"]');
+      change('topic', 'algebra');
+      change('difficulty', 'L3');
+      change('ai-format', 'calculation');
+      click('[data-action="ai-sample"]');
+      await waitElement('#numeric-answer-form');
+      equal(read().active.mode, 'algebra-sample');
+      assert(element('.question-tags').textContent.includes('计算题'));
+      equal(document.querySelectorAll('[data-choice]').length, 0);
+      equal(document.querySelectorAll('[data-numeric-input]').length, 2);
+      const first = current();
+      element('#numeric-0').value = '1/0';
+      click('button[form="numeric-answer-form"]');
+      assert(!element('#numeric-error').hidden);
+      equal(read().attempts.length, 0);
+      element('#numeric-0').value = String(first.fields[0].expected);
+      element('#numeric-1').value = String(first.fields[1].expected + 1);
+      element('#numeric-0').dispatchEvent(new Event('input', { bubbles: true }));
+      click('[data-action="hint"]');
+      equal(element('#numeric-0').value, String(first.fields[0].expected));
+      click('button[form="numeric-answer-form"]');
+      assert(element('.numeric-mark.score-ok').textContent.includes('正确'));
+      assert(element('.numeric-mark.score-error').textContent.includes('应填'));
+      assert(!element('.feedback .answer-line').textContent.includes('□'));
+      await finishQuestions(() => true);
+      assert(element('.result-panel').textContent.includes('答对'));
+      await go('mistakes', '.mistake-card');
+      assert(element('.mistake-answer').textContent.includes(String(first.fields[1].expected + 1)));
+      click('[data-action="review-one"]');
+      await waitElement('#numeric-answer-form');
+      await finishQuestions(() => true);
+      equal(Core.getMistakes(read(), Core.questionsForState(questions, read())).length, 0);
+    } finally {
+      globalThis.fetch = previousFetch;
+      await resetUi();
+    }
+  });
+
   await test('通过文件选择导入学习记录，重复导入不重复作答', async () => {
     await resetUi();
     const imported = answerPractice(Core.createState(), ['ma-a01'], [false]);
@@ -1432,6 +1536,7 @@
       assert(!document.querySelector('[data-action="ai-start"]'));
       change('topic', 'algebra');
       change('difficulty', 'L2');
+      change('ai-format', 'mixed');
       click('[data-action="ai-start"]');
       assert(element('[data-action="ai-start"]').disabled);
       await waitFor(() => element('.ai-notice').textContent.includes('额度已用完'), 'Missing quota notice');
@@ -1442,6 +1547,7 @@
       equal(calls, 2);
       equal(read().active.questionIds.length, 3);
       assert(element('.question-tags').textContent.includes('AI 生成'));
+      equal(current().format, 'fill');
       const wrong = current().id;
       await answerUi(false);
       replayStorage(key);
@@ -1452,6 +1558,7 @@
       await waitElement('#question-title');
       await finishQuestions(() => true);
       equal(Core.getMistakes(read(), Core.questionsForState(questions, read())).length, 0);
+      assert(read().generated.some(spec => spec.format === 'calculation'));
       fitsViewport();
     } finally {
       config.content = previousEndpoint;

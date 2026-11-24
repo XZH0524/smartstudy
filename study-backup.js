@@ -22,9 +22,9 @@
   }
 
   function merge(current, incoming, bank) {
-    const generated = new Map(current.generated.map(spec => [AI.signature(spec), spec]));
+    const generated = new Map(current.generated.map(spec => [AI.questionId(spec), spec]));
     for (const spec of incoming.generated) {
-      const key = AI.signature(spec);
+      const key = AI.questionId(spec);
       const previous = generated.get(key);
       if (previous && JSON.stringify(previous) !== JSON.stringify(spec)) throw new Error('question_conflict');
       generated.set(key, spec);
@@ -36,7 +36,7 @@
       const key = attemptKey(attempt);
       const previous = attempts.get(key);
       if (!previous) { attempts.set(key, attempt); continue; }
-      if (previous.choice !== attempt.choice || Date.parse(previous.at) !== Date.parse(attempt.at)
+      if (JSON.stringify(Core.responseOf(previous)) !== JSON.stringify(Core.responseOf(attempt)) || Date.parse(previous.at) !== Date.parse(attempt.at)
         || (previous.focus && attempt.focus && previous.focus !== attempt.focus)) throw new Error('attempt_conflict');
       attempts.set(key, { ...attempt, ...previous, hinted: previous.hinted ?? attempt.hinted });
     }

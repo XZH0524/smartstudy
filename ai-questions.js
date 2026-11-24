@@ -2,9 +2,12 @@
   'use strict';
   const LEVELS = ['L1', 'L2', 'L3'];
   const BATCH_SIZE = 3;
+  const FORMATS = ['fill', 'calculation', 'choice'];
+  const ROUND_FORMATS = ['mixed', ...FORMATS];
   const integer = (value, limit) => Number.isInteger(value) && Math.abs(value) <= limit;
   const constant = spec => spec.form === 'grouped' ? spec.a * spec.b : spec.b;
   const solution = spec => (spec.d - constant(spec)) / (spec.a - spec.c);
+  const pair = (zh, en) => ({ zh, en });
 
   function normalizeSpec(value, level) {
     if (!value || !LEVELS.includes(level)) return null;
@@ -25,6 +28,30 @@
 
   function signature(spec) {
     return [`${spec.a}_${constant(spec)}`, `${spec.c}_${spec.d}`].sort().join('_');
+  }
+
+  function questionId(spec) {
+    const prefix = spec.source === 'template' ? 'ma-sample' : 'ma-ai';
+    const format = ['fill', 'calculation'].includes(spec.format) ? '-' + spec.format : '';
+    return `${prefix}-${signature(spec)}${format}`;
+  }
+
+  // Compare values as fractions of integers to avoid rounding near a correct answer.
+  function parseNumber(value) {
+    if (typeof value !== 'string' || value.length > 40) return null;
+    const input = value.replace(/[０-９＋－．／]/g, char => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+      .replaceAll('−', '-').trim();
+    const fraction = /^([+-]?\d{1,16})\s*\/\s*([+-]?\d{1,16})$/.exec(input);
+    if (fraction) {
+      const denominator = BigInt(fraction[2]);
+      return denominator === 0n ? null : { text: fraction[1] + '/' + fraction[2], numerator: BigInt(fraction[1]), denominator };
+    }
+    const decimal = /^([+-]?)(?:(\d{1,16})(?:\.(\d{0,16}))?|\.(\d{1,16}))$/.exec(input);
+    if (!decimal) return null;
+    const [, sign, whole, places, shortPlaces] = decimal;
+    const rest = places ?? shortPlaces ?? '';
+    const digits = (whole || '0') + rest;
+    return { text: input, numerator: BigInt(digits) * (sign === '-' ? -1n : 1n), denominator: 10n ** BigInt(rest.length) };
   }
 
   function validateBatch(items, level, previous = []) {
@@ -53,7 +80,6 @@
   }
 
   function makeQuestion(spec) {
-    const key = signature(spec);
     const answer = solution(spec);
     const left = spec.form === 'grouped' ? `${spec.a}(x ${signed(spec.b)})` : linear(spec.a, spec.b);
     const equation = `${left} = ${linear(spec.c, spec.d)}`;
@@ -64,13 +90,23 @@
     // Keep the option order stable when a saved question is loaded again.
     const slot = (Math.abs(spec.a * 31 + spec.b * 17 + spec.c * 7 + spec.d) % 4);
     choices.splice(slot, 0, answer);
+    const fields = [{ label: pair('x = □', 'x = □'), expected: answer }];
+    const fill = spec.format === 'fill';
+    const calculation = spec.format === 'calculation';
+    if (calculation) fields.unshift({ label: pair(`${linear(coefficient)} = □`, `${linear(coefficient)} = □`), expected: numerator });
+    let prompt = pair(`求方程中 x 的值。\n${equation}`, `Find the value of x.\n${equation}`);
+    if (fill) prompt = pair(`填出 x 的值。\n${equation}`, `Fill in the value of x.\n${equation}`);
+    if (calculation) prompt = pair(`有括号时先展开。把 x 项移到左边、常数移到右边，再填写右端的常数和 x 的值。\n${equation}`,
+      `Expand any brackets, then collect the x terms on the left and the constants on the right. Enter the resulting constant and the value of x.\n${equation}`);
+    const sample = spec.source === 'template';
     return {
-      id: `ma-ai-${key}`, ai: true, subject: 'math', topic: 'algebra', level: spec.level,
+      id: questionId(spec), ai: !sample, ...(sample ? { sample: true } : {}), subject: 'math', topic: 'algebra', level: spec.level,
       skill: 'calculation', curriculumRefs: [],
-      prompt: { zh: `求方程中 x 的值。\n${equation}`, en: `Find the value of x.\n${equation}` },
+      prompt,
       hint: { zh: '先把含 x 的项放在等式一边，把常数放在另一边。', en: 'Collect the terms with x on one side and the constants on the other.' },
       options: choices.map(value => ({ zh: String(value), en: String(value) })),
       answer: slot,
+      ...(fill || calculation ? { format: spec.format, fields } : {}),
       explanation: {
         zh: `整理得到 ${reduced}。两边同时除以 ${coefficient}，得 x = ${answer}。`,
         en: `Rearrange to get ${reduced}. Divide both sides by ${coefficient} to get x = ${answer}.`
@@ -78,5 +114,21 @@
     };
   }
 
-  globalThis.EachVeyaAi = { LEVELS, BATCH_SIZE, normalizeSpec, signature, validateBatch, makeQuestion };
+  function sampleBatch(level) {
+    if (!LEVELS.includes(level)) return null;
+    // Original equations for a free preview of the same input and grading flow.
+    const examples = {
+      L1: [[1, 6, 0, 15], [4, 0, 0, -28], [1, -8, 0, -6]],
+      L2: [[4, 7, 0, 31], [-3, 4, 0, 13], [5, -8, 0, 12]],
+      L3: [[4, 3, 1, 18], [3, -2, -2, 9, 'grouped'], [-2, 6, 1, 0, 'grouped']]
+    };
+    const items = examples[level].map(([a, b, c, d, form = 'plain']) => {
+      const spec = { a, b, c, d, form };
+      const x = solution(spec);
+      return { ...spec, distractors: [x - 1, x + 1, x + 2] };
+    });
+    return validateBatch(items, level);
+  }
+
+  globalThis.EachVeyaAi = { LEVELS, BATCH_SIZE, FORMATS, ROUND_FORMATS, normalizeSpec, parseNumber, signature, questionId, solution, validateBatch, makeQuestion, sampleBatch };
 })();

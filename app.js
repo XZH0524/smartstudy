@@ -22,7 +22,7 @@
   }
   const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
     !available || practiceCounts.get(id) >= 400);
-  if (!completeBank || [Core, Learning, AI, Science, Coach, focusSkills, StudyUI, Backup].some(component => !component)) {
+  if (!completeBank || !Core?.evaluateAnswer || !AI?.ROUND_FORMATS || [Learning, Science, Coach, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -46,7 +46,7 @@
   }
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
-  const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
+  const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v5`, `${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
   const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     ...StudyUI.copy,
@@ -140,7 +140,19 @@
     noMatch: ['当前条件没有题目，请调整设置。', 'No questions match. Please adjust the settings.'], changed: ['另一窗口已更新学习记录，页面已同步。', 'Study history changed in another window. This page is now up to date.'],
     error: ['操作未完成，请重新选择练习后再试。', 'The action could not be completed. Please choose a practice and try again.'], today: ['今天', 'Today'],
     aiTitle: ['AI 出题', 'AI practice'],
-    aiScope: ['一元一次方程 L1–L3，每组 3 题。DeepSeek 选择方程参数，程序生成选项并验算答案。', 'Three linear equations per set at L1–L3. DeepSeek chooses the equation parameters. The app builds the choices and checks each answer.'],
+    aiScope: ['一元一次方程 L1–L3，每组 3 题。', 'Three linear equations per set at L1–L3.'],
+    aiFormat: ['题型', 'Question format'],
+    aiMixed: ['混合题型', 'Mixed formats'],
+    aiChoice: ['选择题', 'Multiple choice'],
+    aiFill: ['填空题', 'Fill in the blank'],
+    aiCalculation: ['计算题', 'Two-step calculation'],
+    aiSample: ['免费试做 3 题', 'Try 3 free sample questions'],
+    aiSampleMode: ['题型试做', 'Sample practice'],
+    aiSampleFailed: ['试做暂时无法开始，请重新选择难度。', 'The sample could not start. Choose a level again.'],
+    numericHelp: ['填写整数、小数或分数，例如 −3、3.0、6/2。', 'Enter a whole number, decimal or fraction, such as −3, 3.0 or 6/2.'],
+    numericInvalid: ['请在每个空格填入有效数字。分数的分母不能为 0。', 'Enter a valid number in each field. A fraction must have a nonzero denominator.'],
+    numericMarkCorrect: ['这一步正确', 'Correct'],
+    numericMarkExpected: ['这一步应填 {value}', 'Expected {value}'],
     aiStart: ['生成 {level} 练习', 'Generate {level} practice'],
     aiGenerated: ['AI 生成 · 已验算', 'AI-generated · Answer checked'],
     aiOffline: ['AI 出题服务待启用。', 'AI generation has yet to be activated.'],
@@ -156,6 +168,7 @@
   let state = loadState();
   let questions = Core.questionsForState(bank, state);
   let byId = new Map(questions.map(question => [question.id, question]));
+  const aiFormats = { mixed: 'aiMixed', fill: 'aiFill', calculation: 'aiCalculation', choice: 'aiChoice' };
   let selected = null;
   let selectedQuestion = '';
   let setup = { subject: 'english', level: state.preferences.englishLevel || 'auto', topic: '', count: '8', track: 'cefr' };
@@ -404,10 +417,17 @@
     const focus = recent && Coach.mistakeFocus(recent.question, recent.attempt);
     const notice = !aiEndpoint() ? 'aiOffline' : !level ? 'aiSelection' : aiRequest ? 'aiLoading' : aiNotice;
     const fallback = (onlineOnly || !aiEndpoint() || aiNotice) && !aiRequest ? aiFailedLevel || level : '';
-    return `<section class="placement-panel ai-panel" aria-labelledby="ai-heading">
+    return `<section class="placement-panel ai-panel math-ai-panel" aria-labelledby="ai-heading">
       <div><h3 id="ai-heading">${t('aiTitle')}</h3><p>${t('aiScope')}</p></div>
+      ${level ? `<div class="ai-format-picker field">
+        <label for="ai-format">${t('aiFormat')}</label>
+        <select id="ai-format" data-value="${setup.aiFormat || 'mixed'}" ${aiRequest ? 'disabled' : ''}>
+          ${AI.ROUND_FORMATS.map(format => `<option value="${format}">${t(aiFormats[format])}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div class="inline-actions">
-        ${enabled ? button(t('aiStart', { level }), 'ai-start', 'secondary', `data-level="${level}" ${aiRequest ? 'disabled' : ''}`) : ''}
+        ${enabled ? button(t('aiStart', { level }), 'ai-start', '', `data-level="${level}" ${aiRequest ? 'disabled' : ''}`) : ''}
+        ${level && !aiRequest ? button(t('aiSample'), 'ai-sample', 'secondary', `data-level="${level}"`) : ''}
         ${fallback ? button(t('sameLevelBank', { level: fallback }), 'ai-fallback', 'secondary', `data-level="${fallback}"`) : ''}
         ${focus ? `<a href="#coach/${focus}" class="button secondary">${t('targetedAlgebra', { skill: focusSkills[focus].label[state.language] })}</a>` : ''}
       </div>
@@ -528,7 +548,33 @@
   }
 
   function modeLabel(mode) {
-    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'science-ai': 'scienceAiMode' })[mode] || mode);
+    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode', 'science-ai': 'scienceAiMode' })[mode] || mode);
+  }
+
+  function answerLabel(question, response) {
+    if (question.fields) {
+      return question.fields.map((field, index) => field.label[state.language].replace('□', response[index])).join(' · ');
+    }
+    return `${'ABCD'[response]} · ${question.options[response][state.language]}`;
+  }
+
+  function expectedLabel(question) {
+    return answerLabel(question, question.fields ? question.fields.map(field => field.expected) : question.answer);
+  }
+
+  function renderNumericFields(question, response, graded, score) {
+    return `<form id="numeric-answer-form" aria-labelledby="question-title" novalidate>
+      ${!graded ? `<p class="question-hint" id="numeric-help">${t('numericHelp')}</p>` : ''}
+      <div class="numeric-fields">${question.fields.map((field, index) => `<div class="field">
+        <label for="numeric-${index}">${text(field.label)}</label>
+        <input id="numeric-${index}" name="answer-${index}" class="numeric-input" data-numeric-input type="text"
+          autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40"
+          value="${escapeHtml(response[index] ?? '')}" ${graded ? 'readonly' : 'aria-describedby="numeric-help"'}>
+        ${score ? `<span class="numeric-mark ${score.marks[index] ? 'score-ok' : 'score-error'}">${score.marks[index]
+          ? t('numericMarkCorrect') : t('numericMarkExpected', { value: field.expected })}</span>` : ''}
+      </div>`).join('')}</div>
+      <p id="numeric-error" class="inline-error" role="alert" hidden>${t('numericInvalid')}</p>
+    </form>`;
   }
 
   function renderQuestion() {
@@ -545,11 +591,12 @@
       selectedQuestion = `${session.id}/${question.id}`;
     }
     const choice = graded ? answer : selected;
-    const correct = graded && answer === question.answer;
+    const score = graded ? Core.evaluateAnswer(question, answer) : null;
+    const correct = score?.correct === true;
     const showGrade = graded && !delayedFeedback;
     const done = Object.keys(session.answers).length;
     const total = session.questionIds.length;
-    const options = question.options.map((option, index) => {
+    const options = !question.fields && question.options.map((option, index) => {
       const correctOption = showGrade && index === question.answer;
       const wrongOption = showGrade && index === answer && !correct;
       const chosen = choice === index;
@@ -563,7 +610,7 @@
       ? `<div class="feedback diagnostic-feedback"><h3 id="feedback-title" tabindex="-1">${t(diagnostic ? 'diagnosticSubmitted' : 'focusedSubmitted')}</h3></div>`
       : `<div class="feedback ${correct ? '' : 'wrong'}">
         <h3 id="feedback-title" tabindex="-1">${t(correct ? 'correct' : 'incorrect')}</h3>
-        <p class="answer-line">${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}</p>
+        <p class="answer-line">${t('rightAnswer', { answer: expectedLabel(question) })}</p>
         <p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p>
         ${correct ? '' : study.renderClue(question, { choice: answer, correct })}
       </div>`;
@@ -577,18 +624,21 @@
       <section class="panel question-card">
         <div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${escapeHtml(question.level)}</span>
           ${question.ai ? `<span class="tag">${t('aiGenerated')}</span>` : ''}
-          ${question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
+          ${question.ai || question.sample ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
+            : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
-        <div class="options" role="radiogroup" aria-labelledby="question-title">${options}</div>
+        ${question.fields ? renderNumericFields(question, choice || [], graded, showGrade ? score : null)
+          : `<div class="options" role="radiogroup" aria-labelledby="question-title">${options}</div>`}
         ${hasHint && !graded ? `<div class="hint-area">
           ${hinted ? `<p id="question-hint" class="hint-content" tabindex="-1"><strong>${t('hint')}</strong> ${text(question.hint)}</p>`
             : button(t('showHint'), 'hint', 'secondary', 'aria-expanded="false"')}
         </div>` : ''}
         ${graded ? feedback : ''}
         <div class="question-bottom">
-          ${!graded || hinted ? `<p class="question-hint">${t(graded ? 'hintUsed' : 'selectHint')}</p>` : ''}
+          ${hinted || (!graded && !question.fields) ? `<p class="question-hint">${t(graded ? 'hintUsed' : 'selectHint')}</p>` : ''}
           ${graded ? button(t(session.index === total - 1 ? 'finish' : 'next'), 'next')
-            : button(t('submit'), 'grade', '', selected === null ? 'disabled' : '')}
+            : question.fields ? `<button type="submit" class="button" form="numeric-answer-form">${t('submit')}</button>`
+              : button(t('submit'), 'grade', '', selected === null ? 'disabled' : '')}
         </div>
       </section>
     </div>`;
@@ -605,9 +655,9 @@
       <div class="review-actions">${reviewButtons}<a class="button secondary" href="#coach">${t('coach')}</a></div>
       ${filtered.length ? `<div class="mistake-list">${filtered.map(({ question, attempt, wrongCount }) => `<article class="mistake-card">
         <div class="mistake-meta"><span>${subjectName(question.subject)} · ${text(topics[question.topic])}</span><span>${t('wrongCount', { n: wrongCount })}</span></div>
-        <h3>${text(question.prompt)}</h3><p class="mistake-answer">${t('yourAnswer', { answer: `${'ABCD'[attempt.choice]} · ${question.options[attempt.choice][state.language]}` })}</p>
+        <h3>${text(question.prompt)}</h3><p class="mistake-answer">${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}</p>
         ${study.renderClue(question, attempt)}
-        <details><summary>${t('explanation')}</summary><p><strong>${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}</strong><br>${text(question.explanation)}</p></details>
+        <details><summary>${t('explanation')}</summary><p><strong>${t('rightAnswer', { answer: expectedLabel(question) })}</strong><br>${text(question.explanation)}</p></details>
         <div class="question-bottom"><span class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))}</span>${button(t('reviewOne'), 'review-one', 'secondary', `data-id="${question.id}"`)}</div>
       </article>`).join('')}</div>` : `<section class="panel empty-state"><span class="empty-symbol" aria-hidden="true">✓</span><h2>${t('emptyTitle')}</h2><p>${t('emptyText')}</p>${button(t('start'), 'setup')}</section>`}`;
   }
@@ -655,8 +705,8 @@
           <span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span>
           <details>
             <summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary>
-            <p>${t('yourAnswer', { answer: `${'ABCD'[attempt.choice]} · ${question.options[attempt.choice][state.language]}` })}<br>
-            ${t('rightAnswer', { answer: `${'ABCD'[question.answer]} · ${question.options[question.answer][state.language]}` })}<br>
+            <p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
+            ${t('rightAnswer', { answer: expectedLabel(question) })}<br>
             ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>
             ${study.renderQuestionReport(question, state.flags.find(flag => flag.questionId === id))}
           </details>
@@ -686,6 +736,7 @@
     if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
     commit(current => {
       if (current.active?.id !== previousId) throw new Error('The active practice changed');
+      if (options.sample) return Core.startAlgebraSample(current, bank, options.level, options.format);
       if (options.ids) return Core.startSession(current, questions, options);
       const ids = Learning.practiceIds(current, options);
       const count = options.count === 'all' ? ids.length : Number(options.count);
@@ -712,6 +763,7 @@
   async function beginAi(level) {
     const endpoint = aiEndpoint();
     const science = typeof level === 'object';
+    const format = setup.aiFormat || 'mixed';
     if (!endpoint || !aiRunsHere() || aiRequest || (science ? !level || !scienceAiEnabled() : !selectedAiLevel() || !AI.LEVELS.includes(level))) return;
     const previousId = state.active?.id;
     const request = new AbortController();
@@ -725,7 +777,7 @@
     try {
       if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
       if (aiRequest !== request) return;
-      const payload = science ? level : { level, avoid: state.generated.filter(spec => spec.level === level).slice(-8).map(AI.signature) };
+      const payload = science ? level : { level, avoid: state.generated.filter(spec => spec.level === level && spec.source !== 'template').slice(-8).map(AI.signature) };
       timeout = setTimeout(() => request.abort(), 25000);
       const response = await fetch(science ? new URL('/api/science', endpoint).href : endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -744,11 +796,11 @@
           aiNotice = 'aiInvalid';
           return;
         }
-      } else if (!AI.validateBatch(items, level, state.generated)) { aiNotice = 'aiInvalid'; return; }
+      } else if (!AI.validateBatch(items, level, state.generated.filter(spec => spec.source !== 'template'))) { aiNotice = 'aiInvalid'; return; }
       commit(current => {
         if (current.active?.id !== previousId) throw new Error('The active practice changed');
         if (science) return Core.startSession(current, questions, { subject: payload.subject, ids: questionIds, count: 3, mode: 'science-ai' });
-        return Core.startAiSession(current, bank, level, items);
+        return Core.startAiSession(current, bank, level, items, format);
       });
       started = true;
     } catch (_) {
@@ -850,6 +902,10 @@
       document.getElementById('plan-topic').innerHTML = study.planTopicOptions(value);
       return;
     }
+    if (id === 'ai-format' && AI.ROUND_FORMATS.includes(value)) {
+      setup.aiFormat = value;
+      return;
+    }
     if (!['subject', 'topic', 'difficulty', 'count', 'ielts-target', 'curriculum'].includes(id)) return;
     cancelAiRequest();
     if (id === 'subject') {
@@ -866,7 +922,45 @@
     }
     document.getElementById(id)?.focus();
   });
+  function submitAnswer(response) {
+    const sessionId = state.active?.id;
+    const questionId = state.active?.questionIds[state.active.index];
+    const duration = observedDuration();
+    let answer;
+    commit(current => {
+      if (current.active?.id !== sessionId || current.active?.questionIds[current.active.index] !== questionId) return current;
+      const updated = Core.gradeAnswer(current, questions, response, new Date().toISOString(), duration);
+      if (updated !== current && !Core.hasDelayedFeedback(current.active.mode)) answer = updated.attempts.at(-1).correct;
+      return updated;
+    });
+    if (!testing && typeof answer === 'boolean') Sound?.play(answer);
+    render();
+    document.getElementById('feedback-title')?.focus();
+  }
+
+  main.addEventListener('input', event => {
+    if (!event.target.matches('[data-numeric-input]')) return;
+    selected = [...event.target.form.querySelectorAll('[data-numeric-input]')].map(input => input.value);
+    event.target.removeAttribute('aria-invalid');
+    document.getElementById('numeric-error').hidden = true;
+  });
+
   main.addEventListener('submit', async event => {
+    if (event.target.id === 'numeric-answer-form') {
+      event.preventDefault();
+      const fields = [...event.target.querySelectorAll('[data-numeric-input]')];
+      if (fields.every(field => field.readOnly)) return;
+      const invalid = fields.find(field => !AI.parseNumber(field.value));
+      if (invalid) {
+        document.getElementById('numeric-error').hidden = false;
+        invalid.setAttribute('aria-invalid', 'true');
+        invalid.focus();
+        return;
+      }
+      try { submitAnswer(fields.map(field => field.value)); }
+      catch (_) { render(); reportSetupError(t('error')); }
+      return;
+    }
     if (event.target.id === 'plan-form') {
       event.preventDefault();
       const plan = Core.normalizePlan({ enabled: true, goal: document.getElementById('plan-goal').value,
@@ -900,21 +994,7 @@
         render();
         main.querySelector(`[data-choice="${selected}"]`).focus();
       }
-      if (action === 'grade') {
-        const sessionId = state.active?.id;
-        const questionId = state.active?.questionIds[state.active.index];
-        const duration = observedDuration();
-        let answer;
-        commit(current => {
-          if (current.active?.id !== sessionId || current.active?.questionIds[current.active.index] !== questionId) return current;
-          const updated = Core.gradeAnswer(current, questions, selected, new Date().toISOString(), duration);
-          if (updated !== current && !Core.hasDelayedFeedback(current.active.mode)) answer = updated.attempts.at(-1).correct;
-          return updated;
-        });
-        if (!testing && typeof answer === 'boolean') Sound?.play(answer);
-        render();
-        document.getElementById('feedback-title')?.focus();
-      }
+      if (action === 'grade') submitAnswer(selected);
       if (action === 'hint') {
         const active = state.active;
         commit(current => {
@@ -972,6 +1052,10 @@
       if (action === 'setup') { forceSetup = true; go('practice'); }
       if (action === 'subject' || action === 'topic-practice') openSetup(target.dataset.subject, target.dataset.topic);
       if (action === 'ai-start') await beginAi(target.dataset.level);
+      if (action === 'ai-sample' && AI.LEVELS.includes(target.dataset.level)) {
+        try { await begin({ sample: true, level: target.dataset.level, format: setup.aiFormat || 'mixed' }); }
+        catch (_) { reportSetupError(t('aiSampleFailed')); }
+      }
       if (action === 'science-ai') await beginAi(scienceRequest());
       if (action === 'science-bank') {
         const request = scienceRequest();
@@ -1062,7 +1146,7 @@
   render();
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.7';
+    script.src = 'tests.js?v=2.8';
     document.body.appendChild(script);
   }
 })();
