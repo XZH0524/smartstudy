@@ -1,12 +1,34 @@
 (function () {
   'use strict';
-  const VERSION = 3;
+  const VERSION = 5;
   const AI = globalThis.EachVeyaAi;
-  const englishLevels = globalThis.SmartStudyData.levels.english;
+  const { levels: { english: englishLevels }, topicsBySubject } = globalThis.SmartStudyData;
+  const SkillData = globalThis.EachVeyaSkills;
   const dateIsValid = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
   const unique = values => [...new Set(values)];
   const makeId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const sessionMode = value => ['review', 'diagnostic', 'ai'].includes(value) ? value : 'practice';
+  const focusModes = ['probe', 'retake', 'spaced'];
+  const flagReasons = ['wording', 'answer', 'translation'];
+  const hasDelayedFeedback = mode => mode === 'diagnostic' || focusModes.includes(mode);
+  const sessionMode = value => ['review', 'diagnostic', 'ai', 'science-ai', ...focusModes].includes(value) ? value : 'practice';
+  const isValidDuration = value => Number.isInteger(value) && value > 0 && value <= 600_000;
+
+  function focusFor(value, mode, subject) {
+    return focusModes.includes(mode) && Object.hasOwn(SkillData.skills, value) && SkillData.skills[value].subject === subject ? value : null;
+  }
+
+  function normalizePlan(value) {
+    if (!value || value.enabled !== true) return null;
+    const goal = value.goal === 'all' || Object.hasOwn(topicsBySubject, value.goal) ? value.goal : 'balanced';
+    const minutes = Number(value.minutes);
+    const deadline = typeof value.deadline === 'string' ? value.deadline : '';
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? new Date(deadline + 'T00:00:00') : null;
+    return {
+      enabled: true, goal, topic: topicsBySubject[goal]?.includes(value.topic) ? value.topic : '',
+      minutes: Number.isInteger(minutes) && minutes >= 5 && minutes <= 90 ? minutes : 15,
+      deadline: date && Number.isFinite(date.getTime()) && localDate(date) === deadline ? deadline : ''
+    };
+  }
 
   function normalizePreferences(value) {
     const target = typeof value?.ieltsTarget === 'string' ? Number(value.ieltsTarget) : 0;
@@ -18,20 +40,21 @@
   }
 
   function createState() {
-    return { version: VERSION, language: 'zh', preferences: normalizePreferences(), attempts: [], sessions: [], active: null, generated: [] };
+    return { version: VERSION, language: 'zh', preferences: normalizePreferences(), attempts: [], sessions: [], active: null, generated: [], plan: null, flags: [] };
   }
 
   function questionsForState(questions, state) {
-    return state.generated?.length ? [...questions, ...state.generated.map(AI.makeQuestion)] : questions;
+    return state.generated?.length
+      ? [...questions, ...state.generated.map(spec => SkillData.decorateEquation(AI.makeQuestion(spec), spec))] : questions;
   }
 
   function normalizeState(raw, questions) {
-    if (!raw || ![1, 2, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || ![1, 2, 3, 4, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
     const generated = [];
     const used = new Set();
-    for (const stored of raw.version === VERSION && Array.isArray(raw.generated) ? raw.generated : []) {
+    for (const stored of raw.version >= 3 && Array.isArray(raw.generated) ? raw.generated : []) {
       const spec = AI.normalizeSpec(stored, stored?.level);
       if (!spec) continue;
       const key = AI.signature(spec);
@@ -55,6 +78,9 @@
         mode: raw.version === 1 || entry.mode === 'legacy' ? 'legacy' : sessionMode(entry.mode),
         hinted: raw.version === 1 || typeof entry.hinted !== 'boolean' ? null : entry.hinted
       };
+      const focus = focusFor(entry.focus, attempt.mode, question.subject);
+      if (focus && question.focus?.includes(focus)) attempt.focus = focus;
+      if (raw.version >= 4 && isValidDuration(entry.durationMs)) attempt.durationMs = entry.durationMs;
       attempts.push(attempt);
       submitted.set(question.id, attempt);
     }
@@ -69,9 +95,13 @@
       const submitted = attemptsBySession.get(session.id);
       if (questionIds.some(id => !submitted?.has(id))) continue;
       const correct = questionIds.filter(id => submitted.get(id).correct).length;
-      sessions.push({ id: session.id, subject: session.subject, mode: sessionMode(session.mode), questionIds, completedAt: session.completedAt, correct });
+      const mode = sessionMode(session.mode);
+      const focus = focusFor(session.focus, mode, session.subject);
+      sessions.push({ id: session.id, subject: session.subject, mode, questionIds, completedAt: session.completedAt, correct,
+        ...(focus && questionIds.every(id => byId.get(id).focus?.includes(focus)) ? { focus } : {}) });
       completedIds.add(session.id);
     }
+    sessions.sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
 
     let active = null;
     const saved = raw.active;
@@ -90,11 +120,20 @@
           id: saved.id, subject: saved.subject, mode: sessionMode(saved.mode), questionIds,
           index: Math.max(0, Math.min(requestedIndex, lastAvailableIndex)), answers, hintedQuestionIds
         };
+        const focus = focusFor(saved.focus, active.mode, active.subject);
+        if (focus && questionIds.every(id => byId.get(id).focus?.includes(focus))) active.focus = focus;
       }
     }
+    const flags = Array.isArray(raw.flags) ? raw.flags.reduce((items, flag) => {
+      if (byId.has(flag?.questionId) && flagReasons.includes(flag.reason) && dateIsValid(flag.at)) {
+        const previous = items.get(flag.questionId);
+        if (!previous || Date.parse(previous.at) < Date.parse(flag.at)) items.set(flag.questionId, { questionId: flag.questionId, reason: flag.reason, at: flag.at });
+      }
+      return items;
+    }, new Map()) : new Map();
     return {
       version: VERSION, language: raw.language === 'en' ? 'en' : 'zh',
-      preferences: normalizePreferences(raw.preferences), attempts, sessions, active, generated
+      preferences: normalizePreferences(raw.preferences), attempts, sessions, active, generated, plan: normalizePlan(raw.plan), flags: [...flags.values()]
     };
   }
 
@@ -114,10 +153,20 @@
     return { ...state, preferences: normalizePreferences({ ...state.preferences, ...preferences }) };
   }
 
+  function flagQuestion(state, question, reason, at = new Date().toISOString()) {
+    if (!question || !flagReasons.includes(reason) || !dateIsValid(at)) throw new Error('Invalid question report');
+    return { ...state, flags: [...state.flags.filter(flag => flag.questionId !== question.id), { questionId: question.id, reason, at }] };
+  }
+
+  function reportableAttempts(state) {
+    const completed = new Set(state.sessions.filter(session => hasDelayedFeedback(session.mode)).map(session => session.id));
+    return state.attempts.filter(attempt => !hasDelayedFeedback(attempt.mode) || completed.has(attempt.sessionId));
+  }
+
   function getMistakes(state, questions) {
     const latest = new Map();
     const wrongCounts = new Map();
-    for (const attempt of state.attempts) {
+    for (const attempt of reportableAttempts(state)) {
       latest.set(attempt.questionId, attempt);
       if (!attempt.correct) wrongCounts.set(attempt.questionId, (wrongCounts.get(attempt.questionId) || 0) + 1);
     }
@@ -128,7 +177,7 @@
 
   function getStats(state, questions, subject) {
     const ids = new Set(questions.filter(question => !subject || question.subject === subject).map(question => question.id));
-    const attempts = state.attempts.filter(attempt => ids.has(attempt.questionId));
+    const attempts = reportableAttempts(state).filter(attempt => ids.has(attempt.questionId));
     const correct = attempts.filter(attempt => attempt.correct).length;
     return { total: attempts.length, correct, accuracy: attempts.length ? Math.round(correct / attempts.length * 100) : null,
       unique: new Set(attempts.map(attempt => attempt.questionId)).size,
@@ -150,7 +199,7 @@
       const subjectIds = new Set(questions.filter(question => question.subject === subject).map(question => question.id));
       return unique(ids).filter(id => subjectIds.has(id)).slice(0, count);
     }
-    const pool = questions.filter(question => question.subject === subject && !question.diagnosticOnly
+    const pool = questions.filter(question => question.subject === subject && !question.diagnosticOnly && !question.focusOnly
       && (!level || level === question.level) && (!topic || topic === question.topic));
     return shuffled(pool, random).slice(0, count).map(question => question.id);
   }
@@ -158,8 +207,13 @@
   function startSession(state, questions, options, random = Math.random) {
     const questionIds = chooseQuestions(questions, options, random);
     if (!questionIds.length) throw new Error('No questions match');
+    const mode = sessionMode(options.mode);
+    const focus = focusFor(options.focus, mode, options.subject);
+    if (focusModes.includes(mode) && (!focus || !questionIds.every(id => questions.find(question => question.id === id)?.focus?.includes(focus)))) {
+      throw new Error('Invalid focused practice');
+    }
     return { ...state, active: {
-      id: makeId(), subject: options.subject, mode: sessionMode(options.mode), questionIds, index: 0, answers: {}, hintedQuestionIds: []
+      id: makeId(), subject: options.subject, mode, questionIds, index: 0, answers: {}, hintedQuestionIds: [], ...(focus ? { focus } : {})
     } };
   }
 
@@ -173,14 +227,14 @@
 
   function revealHint(state, questions) {
     const session = state.active;
-    if (!session || session.mode === 'diagnostic') return state;
+    if (!session || hasDelayedFeedback(session.mode)) return state;
     const id = session.questionIds[session.index];
     if (session.answers[id] !== undefined || session.hintedQuestionIds.includes(id)
       || !questions.some(question => question.id === id && question.hint)) return state;
     return { ...state, active: { ...session, hintedQuestionIds: [...session.hintedQuestionIds, id] } };
   }
 
-  function gradeAnswer(state, questions, choice, at = new Date().toISOString()) {
+  function gradeAnswer(state, questions, choice, at = new Date().toISOString(), durationMs) {
     const session = state.active;
     if (!session) throw new Error('No active session');
     const question = questions.find(item => item.id === session.questionIds[session.index]);
@@ -189,7 +243,8 @@
     if (session.answers[question.id] !== undefined) return state;
     const attempt = {
       sessionId: session.id, questionId: question.id, choice, correct: choice === question.answer, at,
-      mode: session.mode, hinted: session.hintedQuestionIds.includes(question.id)
+      mode: session.mode, hinted: session.hintedQuestionIds.includes(question.id),
+      ...(session.focus ? { focus: session.focus } : {}), ...(isValidDuration(durationMs) ? { durationMs } : {})
     };
     return { ...state, attempts: [...state.attempts, attempt], active: { ...session, answers: { ...session.answers, [question.id]: choice } } };
   }
@@ -202,7 +257,8 @@
     const byId = new Map(questions.map(question => [question.id, question]));
     const completed = {
       id: session.id, subject: session.subject, mode: session.mode, questionIds: [...session.questionIds],
-      correct: session.questionIds.filter(id => session.answers[id] === byId.get(id).answer).length, completedAt: at
+      correct: session.questionIds.filter(id => session.answers[id] === byId.get(id).answer).length, completedAt: at,
+      ...(session.focus ? { focus: session.focus } : {})
     };
     return { ...state, active: null, sessions: [...state.sessions, completed] };
   }
@@ -212,15 +268,17 @@
   }
 
   function dailyStats(state, now = new Date()) {
+    const attempts = reportableAttempts(state);
     return Array.from({ length: 7 }, (_, index) => {
       const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + index);
       const key = localDate(date);
-      return { date, total: state.attempts.filter(attempt => localDate(new Date(attempt.at)) === key).length };
+      return { date, total: attempts.filter(attempt => localDate(new Date(attempt.at)) === key).length };
     });
   }
 
   globalThis.SmartStudyCore = {
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
-    shuffled, chooseQuestions, startSession, startAiSession, revealHint, gradeAnswer, advanceSession, localDate, dailyStats
+    shuffled, chooseQuestions, startSession, startAiSession, revealHint, gradeAnswer, advanceSession, localDate, dailyStats,
+    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes
   };
 })();

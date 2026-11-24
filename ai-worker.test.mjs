@@ -167,3 +167,42 @@ test('monthly cap applies after the daily counter resets', async () => {
   assert.equal((await quota.fetch()).status, 204);
   assert.equal((await quota.fetch()).status, 429);
 });
+
+const scienceEndpoint = 'https://eachveya.example/api/science';
+const scienceStudy = { subject: 'biology', topic: 'population-density', level: 'L1', curriculum: '', weakness: 'unit', avoid: [] };
+const scienceRequest = (overrides = {}) => new Request(scienceEndpoint, {
+  method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...scienceStudy, ...overrides })
+});
+
+test('science validates subject, topic, tier, privacy fields and reserved course scope before quota', async () => {
+  const { env, calls } = environment();
+  for (const unsupported of [{ subject: 'physics' }, { level: 'L6' }, { topic: 'constructor' },
+    { studentName: 'extra field' }, { weakness: 'free text' }, { avoid: ['ma-a01'] }, { curriculum: 'fake' }]) {
+    assert.equal((await handleRequest(scienceRequest(unsupported), env, noModelCall)).status, 400);
+  }
+  assert.equal((await handleRequest(scienceRequest({ curriculum: 'ap' }), env, noModelCall)).status, 409);
+  assert.equal((await handleRequest(scienceRequest({ avoid: [1, 2, 3, 4, 5, 6].map(n => `sci-population-density-L1-${n}`) }), env, noModelCall)).status, 409);
+  assert.equal(calls.quota, 0);
+});
+
+test('science confines model output to three fresh audited variants and includes the available requested weakness', async () => {
+  const { env, calls } = environment();
+  const respond = ids => Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ questionIds: ids }) } }] });
+  const valid = ['sci-population-density-L1-2', 'sci-population-density-L1-3', 'sci-population-density-L1-5'];
+  const options = { avoid: ['sci-population-density-L1-1'] };
+  const accepted = await handleRequest(scienceRequest(options), env, async (url, request) => {
+    assert.equal(url, 'https://api.deepseek.com/chat/completions');
+    const content = JSON.parse(JSON.parse(request.body).messages[1].content);
+    assert.equal(content.scope, 'general');
+    assert.equal(content.weakness, 'unit');
+    assert.equal(content.candidates.length, 7);
+    assert.ok(!JSON.stringify(content).includes('sci-population-density-L1-1'));
+    return respond(valid);
+  });
+  assert.deepEqual(await accepted.json(), { questionIds: valid });
+  for (const ids of [[valid[0], valid[0], valid[2]], ['sci-population-density-L1-1', ...valid.slice(1)],
+    ['sci-mass-density-L1-6', ...valid.slice(1)], [valid[0], 'sci-population-density-L1-4', 'sci-population-density-L1-6']]) {
+    assert.equal((await handleRequest(scienceRequest(options), env, async () => respond(ids))).status, 422);
+  }
+  assert.equal(calls.quota, 5);
+});

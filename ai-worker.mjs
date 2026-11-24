@@ -1,4 +1,5 @@
 import './ai-questions.js';
+import { readScienceInput, approvedOptions, generateScience } from './science-ai.mjs';
 
 const AI = globalThis.EachVeyaAi;
 const MODEL_URL = 'https://api.deepseek.com/chat/completions';
@@ -26,7 +27,7 @@ function reply(body, status, origin = '') {
   return Response.json(body, { status, headers });
 }
 
-async function readInput(request) {
+async function readInput(request, science) {
   const reader = request.body?.getReader();
   if (!reader) return null;
   const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -41,6 +42,8 @@ async function readInput(request) {
       text += decoder.decode(value, { stream: true });
     }
     const input = JSON.parse(text + decoder.decode());
+    if (science) return readScienceInput(input);
+    if (input?.subject !== undefined) return null;
     if (!input || !AI.LEVELS.includes(input.level) || !Array.isArray(input.avoid)
       || input.avoid.length > 8 || input.avoid.some(key => typeof key !== 'string' || !EQUATION_KEY.test(key))) return null;
     return { level: input.level, avoid: [...new Set(input.avoid)] };
@@ -118,9 +121,10 @@ async function generate(apiKey, { level, avoid }, modelFetch, origin) {
 
 export async function handleRequest(request, env, modelFetch = fetch) {
   const path = new URL(request.url).pathname;
+  const science = path === '/api/science';
   const ready = Boolean(env.DEEPSEEK_API_KEY && env.QUOTA && env.ALLOWED_ORIGIN);
   if (path === '/health' && request.method === 'GET') return reply({ ready }, ready ? 200 : 503);
-  if (path !== '/api/generate') return reply({ error: 'not_found' }, 404);
+  if (path !== '/api/generate' && !science) return reply({ error: 'not_found' }, 404);
 
   const origin = request.headers.get('Origin');
   if (!origin || origin !== env.ALLOWED_ORIGIN) return reply({ error: 'origin' }, 403);
@@ -129,8 +133,10 @@ export async function handleRequest(request, env, modelFetch = fetch) {
   if (!ready) return reply({ error: 'unavailable' }, 503, origin);
   if (request.headers.get('Content-Type')?.split(';', 1)[0].trim() !== 'application/json') return reply({ error: 'input' }, 400, origin);
 
-  const input = await readInput(request);
+  const input = await readInput(request, science);
   if (!input) return reply({ error: 'input' }, 400, origin);
+  const candidates = science ? approvedOptions(input) : null;
+  if (science && candidates.length < 3) return reply({ error: 'insufficient_reviewed_items' }, 409, origin);
   let reservation;
   try {
     const quota = env.QUOTA.get(env.QUOTA.idFromName('generation'));
@@ -141,6 +147,12 @@ export async function handleRequest(request, env, modelFetch = fetch) {
   if (reservation.status === 429) return reply({ error: 'limit' }, 429, origin);
   if (!reservation.ok) return reply({ error: 'quota_unavailable' }, 503, origin);
   try {
+    if (science) {
+      const items = await generateScience(env.DEEPSEEK_API_KEY, input, candidates, modelFetch, MODEL_URL, MODEL);
+      if (items?.providerStatus) return reply({ error: 'provider_unavailable', providerStatus: items.providerStatus }, 503, origin);
+      if (!items) return reply({ error: 'verification' }, 422, origin);
+      return reply({ questionIds: items }, 200, origin);
+    }
     return await generate(env.DEEPSEEK_API_KEY, input, modelFetch, origin);
   } catch (_) {
     return reply({ error: 'provider_unavailable' }, 503, origin);

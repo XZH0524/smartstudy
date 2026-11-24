@@ -1,0 +1,249 @@
+(function () {
+  'use strict';
+  const Core = globalThis.SmartStudyCore;
+  const Learning = globalThis.SmartStudyLearning;
+  const { skills } = globalThis.EachVeyaSkills;
+  const Science = globalThis.EachVeyaScience;
+  const { questions, topicsBySubject, levels } = globalThis.SmartStudyData;
+  const intervals = [1, 3, 7, 14, 30];
+
+  function dayAt(date, offset = 0) {
+    return Core.localDate(new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset));
+  }
+
+  function assessment(state, catalog, now = new Date()) {
+    const byId = new Map(catalog.map(question => [question.id, question]));
+    const entries = Object.fromEntries(Object.keys(skills).map(focus => [focus, {
+      status: 'unassessed', due: '', interval: 0, seen: 0, pendingSince: '', lastQuestion: '', lastCheck: null
+    }]));
+    const attempts = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime());
+    const firstAttempts = new Set();
+    const checks = new Map();
+    const scienceIndependent = new Map();
+    const events = attempts.map(attempt => ({ time: Date.parse(attempt.at), attempt }));
+    for (const session of state.sessions.filter(session => session.focus && Core.focusModes.includes(session.mode))) {
+      const time = Date.parse(session.completedAt);
+      if (time <= now.getTime()) events.push({ time, session });
+    }
+    events.sort((a, b) => a.time - b.time);
+
+    for (const { time, attempt, session } of events) {
+      const date = new Date(time);
+      const day = dayAt(date);
+      if (attempt) {
+        const question = byId.get(attempt.questionId);
+        if (!question) continue;
+        const fresh = !firstAttempts.has(question.id);
+        firstAttempts.add(question.id);
+        const marks = attempt.focus ? [attempt.focus] : question.focus || [];
+        if (fresh) for (const focus of marks) entries[focus].seen++;
+        const likely = question.errors?.[attempt.choice];
+        if (!attempt.correct && likely && (!attempt.focus || attempt.focus === likely) && !Core.focusModes.includes(attempt.mode)) {
+          const entry = entries[likely];
+          if (entry.status !== 'confirmed') entry.status = 'possible';
+          entry.due = day;
+          entry.interval = 0;
+          entry.pendingSince ||= day;
+          entry.lastQuestion = question.id;
+          if (Science.topics[likely]) {
+            entry.level = question.level;
+            entry.error = question.errorKinds?.[attempt.choice] || '';
+          }
+        }
+        if (fresh && question.domain && question.role === 'practice' && ['practice', 'science-ai'].includes(attempt.mode) && attempt.correct && attempt.hinted === false) {
+          const key = question.topic + '/' + question.level;
+          const count = (scienceIndependent.get(key) || 0) + 1;
+          scienceIndependent.set(key, count);
+          const entry = entries[question.topic];
+          if (count === 4 && (!entry.due || (['verified', 'scheduled'].includes(entry.status) && entry.level !== question.level))) {
+            entry.status = 'scheduled';
+            entry.interval = 1;
+            entry.due = dayAt(date, 1);
+            entry.level = question.level;
+          }
+        }
+        if (attempt.focus) {
+          const rows = checks.get(attempt.sessionId) || [];
+          rows.push({ fresh, correct: attempt.correct, independent: attempt.hinted === false, likely,
+            error: question.errorKinds?.[attempt.choice] || likely, level: question.level });
+          checks.set(attempt.sessionId, rows);
+        }
+        continue;
+      }
+
+      const entry = entries[session.focus];
+      const rows = checks.get(session.id) || [];
+      if (rows.length !== session.questionIds.length) continue;
+      const independent = rows.filter(row => row.fresh && row.independent && row.correct).length;
+      const signals = rows.filter(row => row.fresh && !row.correct && row.likely === session.focus).map(row => row.error);
+      const repeatedSignal = Math.max(0, ...signals.map(kind => signals.filter(signal => signal === kind).length));
+      const wrong = rows.filter(row => !row.correct).length;
+      const verified = independent === rows.length && (session.mode === 'spaced' ? rows.length >= 1 : rows.length >= 2);
+      entry.lastCheck = { day, answered: rows.length, independent, repeatedSignal, verified, mode: session.mode };
+      if (Science.topics[session.focus]) entry.level = rows[0].level;
+      if (verified) {
+        if (!entry.due || entry.due <= day || entry.interval === 0) {
+          const index = intervals.indexOf(entry.interval);
+          entry.interval = intervals[Math.min(intervals.length - 1, index + 1)];
+          entry.due = dayAt(date, entry.interval);
+        }
+        entry.status = 'verified';
+        entry.pendingSince = '';
+      } else if (wrong) {
+        entry.status = repeatedSignal >= 2 || entry.status === 'confirmed' ? 'confirmed' : 'possible';
+        entry.due = day;
+        entry.interval = 0;
+        entry.pendingSince ||= day;
+      }
+    }
+    return entries;
+  }
+
+  function focusIds(state, focus, mode, count = mode === 'spaced' ? 1 : 2, record) {
+    if (!Object.hasOwn(skills, focus) || !Core.focusModes.includes(mode)) return [];
+    const used = new Set(state.attempts.map(attempt => attempt.questionId));
+    if (Science.topics[focus]) {
+      const topic = Science.topics[focus];
+      const level = record?.level || Learning.subjectProfile(state, topic.subject)[focus].level;
+      const role = mode === 'probe' ? 'probe' : 'transfer';
+      const options = Science.questions.filter(question => question.topic === focus && question.level === level && question.role === role && !used.has(question.id));
+      const error = record?.error;
+      const related = error && role === 'probe' ? options.filter(question => Object.values(question.errorKinds).includes(error)) : [];
+      const selected = (related.length >= count ? related : options).slice(0, count);
+      return selected.length === count ? selected.map(question => question.id) : [];
+    }
+    const options = questions.filter(question => question.variant && question.focus.includes(focus) && !used.has(question.id));
+    const selected = [];
+    if (mode === 'probe') {
+      const step = options.find(question => question.variant === 'step');
+      if (step) selected.push(step);
+    }
+    for (const question of options) {
+      if (selected.length >= count) break;
+      if (question.variant === 'apply' && !selected.some(item => item.variantGroup === question.variantGroup)) selected.push(question);
+    }
+    return selected.length === count ? selected.map(question => question.id) : [];
+  }
+
+  function mistakeFocus(question, attempt) {
+    return attempt.correct ? '' : question.errors?.[attempt.choice] || '';
+  }
+
+  function dueSkills(profile, now = new Date(), limit = Infinity) {
+    const day = dayAt(now);
+    return Object.entries(profile).filter(([, value]) => value.due && value.due <= day)
+      .sort((a, b) => a[1].due.localeCompare(b[1].due) || Number(b[1].status === 'confirmed') - Number(a[1].status === 'confirmed'))
+      .slice(0, limit).map(([id]) => id);
+  }
+
+  function counts(attempts) {
+    const correct = attempts.filter(attempt => attempt.correct).length;
+    const timed = attempts.filter(attempt => Number.isInteger(attempt.durationMs) && attempt.durationMs > 0);
+    return {
+      total: attempts.length, correct, accuracy: attempts.length ? Math.round(100 * correct / attempts.length) : null,
+      distinct: new Set(attempts.map(attempt => attempt.questionId)).size,
+      timed: timed.length, durationMs: timed.reduce((sum, attempt) => sum + attempt.durationMs, 0)
+    };
+  }
+
+  function report(state, catalog, days, now = new Date()) {
+    const length = [1, 7, 30].includes(days) ? days : 7;
+    const today = dayAt(now);
+    const start = dayAt(now, 1 - length);
+    const previousStart = dayAt(now, 1 - 2 * length);
+    const byId = new Map(catalog.map(question => [question.id, question]));
+    const recent = [], previous = [];
+    const known = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime());
+    const byDay = new Map();
+    const topicRows = Object.fromEntries(Object.values(topicsBySubject).flat().map(topic => [topic, []]));
+    const errors = new Map();
+    for (const attempt of known) {
+      const day = dayAt(new Date(attempt.at));
+      if (day < previousStart || day > today) continue;
+      if (day < start) { previous.push(attempt); continue; }
+      recent.push(attempt);
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(attempt);
+      const question = byId.get(attempt.questionId);
+      if (!question) continue;
+      topicRows[question.topic].push(attempt);
+      const focus = mistakeFocus(question, attempt);
+      if (focus) errors.set(focus, (errors.get(focus) || 0) + 1);
+    }
+    const topics = Object.fromEntries(Object.entries(topicRows).map(([topic, attempts]) => [topic, counts(attempts)]));
+    const daily = Array.from({ length }, (_, index) => {
+      const date = dayAt(now, index + 1 - length);
+      return { date, ...counts(byDay.get(date) || []) };
+    });
+    return {
+      recent: counts(recent), previous: counts(previous), topics, daily,
+      errors: [...errors.entries()].sort((a, b) => b[1] - a[1])
+    };
+  }
+
+  function learningPlan(state, catalog, now = new Date()) {
+    if (!state.plan) return null;
+    const settings = state.plan;
+    const today = dayAt(now);
+    const profile = assessment(state, catalog, now);
+    const subjects = settings.goal === 'all' ? ['math', 'english', ...Science.subjects]
+      : settings.goal === 'balanced' ? ['math', 'english'] : [settings.goal];
+    const matchesFocus = id => subjects.includes(skills[id].subject)
+      && (!settings.topic || settings.topic === skills[id].topic);
+    const due = dueSkills(profile, now).filter(matchesFocus);
+    const attempts = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime());
+    const timed = attempts.slice(-30).flatMap(attempt => attempt.durationMs ? [attempt.durationMs / 1000] : []).sort((a, b) => a - b);
+    const pace = timed.length >= 5 ? Math.max(45, Math.min(240, timed[Math.floor(timed.length / 2)])) : 90;
+    const completed = attempts.filter(attempt => dayAt(new Date(attempt.at)) === today);
+    const usedSeconds = completed.reduce((total, attempt) => total + (attempt.durationMs ? attempt.durationMs / 1000 : pace), 0);
+    const slots = Math.max(0, Math.min(12 - completed.length, Math.floor((settings.minutes * 60 - usedSeconds) / pace)));
+    const review = [];
+    let remaining = slots;
+    for (const focus of due) {
+      if (review.length >= 2 || remaining < 1) break;
+      const mode = ['verified', 'scheduled'].includes(profile[focus].status) ? 'spaced' : profile[focus].status === 'confirmed' ? 'retake' : 'probe';
+      const count = mode === 'spaced' ? 1 : 2;
+      const ids = focusIds(state, focus, mode, count, profile[focus]);
+      if (remaining < count || !ids.length) continue;
+      review.push({ focus, mode, count });
+      remaining -= count;
+    }
+    const priorities = new Set(Object.keys(skills).filter(id => matchesFocus(id) && profile[id].status === 'confirmed').map(id => skills[id].topic));
+    const evidence = report(state, catalog, 7, now);
+    const byId = new Map(catalog.map(question => [question.id, question]));
+    const lastByTopic = new Map();
+    const practisedSubjects = new Set();
+    for (const attempt of attempts) {
+      const question = byId.get(attempt.questionId);
+      if (!question) continue;
+      lastByTopic.set(question.topic, Date.parse(attempt.at));
+      practisedSubjects.add(question.subject);
+    }
+    const choices = subjects.flatMap(subject => topicsBySubject[subject].filter(topic => !settings.topic || topic === settings.topic)
+      .map(topic => ({ subject, topic, practice: evidence.topics[topic].distinct, priority: priorities.has(topic) ? 0 : 1,
+        last: lastByTopic.get(topic) ?? -Infinity })))
+      .sort((a, b) => a.priority - b.priority || a.practice - b.practice || a.last - b.last);
+    const next = choices[0];
+    const deadlineSoon = settings.deadline && settings.deadline >= today && settings.deadline <= dayAt(now, 6);
+    const practiceCount = next && remaining > 0 ? Math.min(remaining, deadlineSoon ? 4 : 6) : 0;
+    const placement = next && !deadlineSoon && !Learning.latestPlacement(state, next.subject)
+      && !practisedSubjects.has(next.subject) && (next.subject !== 'math' || !state.preferences.mathPlacementDeferred)
+      ? next.subject : '';
+    const practice = practiceCount ? {
+      subject: next.subject, topic: next.topic, count: practiceCount, level: next.subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
+    } : null;
+    const upcoming = Object.entries(profile).filter(([id, value]) => matchesFocus(id) && value.due > today && value.due <= dayAt(now, 29))
+      .map(([focus, value]) => ({ focus, date: value.due })).sort((a, b) => a.date.localeCompare(b.date));
+    const week = Array.from({ length: 7 }, (_, index) => {
+      const date = dayAt(now, index);
+      return { date, topic: choices[index % choices.length]?.topic, scheduled: upcoming.filter(item => item.date === date) };
+    });
+    const weeks = [[0, 6], [7, 13], [14, 20], [21, 27], [28, 29]].map(([from, to], index) => ({
+      from: dayAt(now, from), to: dayAt(now, to), topic: choices[index % choices.length]?.topic,
+      scheduled: upcoming.filter(item => item.date >= dayAt(now, from) && item.date <= dayAt(now, to))
+    }));
+    return { review, practice, placement, week, weeks, dueCount: due.length, slots, usedSeconds, pace, deadlineSoon };
+  }
+
+  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, dueSkills, report, learningPlan, intervals };
+})();

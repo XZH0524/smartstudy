@@ -4,9 +4,14 @@
   const Core = globalThis.SmartStudyCore;
   const Learning = globalThis.SmartStudyLearning;
   const AI = globalThis.EachVeyaAi;
+  const Coach = globalThis.EachVeyaCoach;
+  const Backup = globalThis.EachVeyaBackup;
+  const Science = globalThis.EachVeyaScience;
   const { questions, subjects, topics, topicsBySubject, levels, skills, curricula } = globalThis.SmartStudyData;
   const byId = new Map(questions.map(question => [question.id, question]));
-  const key = 'smart-study.tests.v3';
+  const key = 'smart-study.tests.v5';
+  const v4Key = 'smart-study.tests.v4';
+  const v3Key = 'smart-study.tests.v3';
   const previousKey = 'smart-study.tests.v2';
   const legacyKey = 'smart-study.tests.v1';
   const aiFixture = [
@@ -52,6 +57,19 @@
     return updated;
   }
 
+  function focusedRound(state, focus, mode, date, outcome = true) {
+    const ids = Coach.focusIds(state, focus, mode);
+    assert(ids.length > 0);
+    const subject = byId.get(ids[0]).subject;
+    let current = start({ subject, ids, count: ids.length, mode, focus }, state);
+    for (const id of ids) {
+      const question = byId.get(id);
+      const choice = outcome ? question.answer : Number(Object.keys(question.errors)[0]);
+      current = Core.advanceSession(Core.gradeAnswer(current, questions, choice, date), questions, date);
+    }
+    return current;
+  }
+
   function placement(subject, shouldGetRight, previous = Core.createState()) {
     const ids = Learning.diagnosticIds(subject);
     let state = start({ subject, ids, count: ids.length, mode: 'diagnostic' }, previous);
@@ -89,7 +107,7 @@
       assert(subjects.some(subject => subject.id === item.subject && subject.available), item.id);
       assert(topics[item.topic] && topicsBySubject[item.subject].includes(item.topic), item.id);
       assert(levels[item.subject].includes(item.level), item.id);
-      assert(item.subject === 'math' ? skills[item.skill] && Array.isArray(item.curriculumRefs) : item.track === 'cefr', item.id);
+      assert(item.subject === 'english' ? item.track === 'cefr' : skills[item.skill] && Array.isArray(item.curriculumRefs), item.id);
       equal(item.options.length, 4);
       assert(Number.isInteger(item.answer) && !!item.options[item.answer], item.id);
       for (const lang of ['zh', 'en']) {
@@ -109,7 +127,7 @@
         }
       }
     }
-    equal(curricula.map(item => item.id), ['cn', 'gcse', 'igcse', 'common-core', 'ib']);
+    equal(curricula.map(item => item.id), ['cn', 'gcse', 'igcse', 'common-core', 'ib', 'a-level', 'ap']);
   });
 
   await test('25 个数学题型首个变式的评分与独立验算一致', () => {
@@ -128,11 +146,179 @@
     }
   });
 
+  await test('三门科学每门三个领域及知识点，全部五级覆盖并校验数值与证据题', () => {
+    equal(Science.questions.length, 918);
+    equal(new Set(Science.questions.map(item => item.prompt.en)).size, 918);
+    for (const subject of Science.subjects) {
+      equal(topicsBySubject[subject].length, 3);
+      equal(new Set(topicsBySubject[subject].map(topic => Science.topics[topic].domain)).size, 3);
+      equal(Learning.diagnosticIds(subject).length, 6);
+      for (const topic of topicsBySubject[subject]) for (const level of levels[subject]) {
+        const items = Science.candidates({ subject, topic, level });
+        equal(items.length, 8);
+        assert(items.every(item => Science.validate(item) && item.safety === 'virtual-data' && item.curriculumRefs.length === 0));
+        for (const curriculum of Science.curriculumKeys) {
+          equal(Science.scopes[subject][curriculum].status, 'planned');
+          equal(Science.candidates({ subject, topic, level, curriculum }).length, 0);
+        }
+      }
+    }
+    for (const question of Science.questions) {
+      assert(Science.validate(question), question.id);
+      assert(!Science.validate({ ...question, answer: (question.answer + 1) % 4 }), question.id);
+    }
+    const speed = byId.get('sci-average-speed-L3-1');
+    equal(speed.options[speed.answer].en, '3 m/s');
+    const percentage = byId.get('sci-mass-percentage-L3-1');
+    equal(percentage.options[percentage.answer].en, '20%');
+    const density = byId.get('sci-population-density-L3-1');
+    equal(density.options[density.answer].en, '3 individuals/m²');
+  });
+
+  await test('科学起点是练习建议，独立按学科知识点评级', () => {
+    const physics = placement('physics', question => question.topic === 'average-speed' || question.topic === 'ohmic-current' && question.level === 'L1');
+    const profile = Learning.subjectProfile(physics, 'physics');
+    equal([profile['average-speed'].level, profile['ohmic-current'].level, profile['energy-efficiency'].level], ['L3', 'L2', 'L1']);
+    assert(Object.values(profile).every(row => row.basis === 'diagnostic' && row.retained === null));
+    assert(Object.values(Learning.subjectProfile(physics, 'biology')).every(row => row.basis === 'starting' && row.retained === null));
+    equal(Learning.practicePool(physics, { subject: 'physics', topic: 'average-speed', level: 'L5' }).length, 8);
+  });
+
+  await test('科学多题独立答对后仍需隔日复测；一次答错或低参与不调级', () => {
+    const topic = 'mass-density';
+    const candidates = Science.candidates({ subject: 'chemistry', topic, level: 'L1' }).map(item => item.id).slice(0, 5);
+    const initial = answerPractice(Core.createState(), candidates.slice(0, 1), [true], knownTime);
+    const row = state => Learning.subjectProfile(state, 'chemistry')[topic];
+    equal(row(initial).level, 'L1');
+    equal(row(initial).retained, null);
+    const practiced = answerPractice(initial, candidates.slice(1), Array(4).fill(true), knownTime);
+    const evidence = Coach.assessment(practiced, questions, new Date(knownTime))[topic];
+    equal(evidence.status, 'scheduled');
+    equal(evidence.level, 'L1');
+    equal(evidence.due, Core.localDate(new Date(laterTime)));
+    equal(row(practiced).retained, null);
+    const early = focusedRound(practiced, topic, 'spaced', knownTime);
+    equal(row(early).level, 'L1');
+    const verified = focusedRound(early, topic, 'spaced', laterTime);
+    equal(row(verified).level, 'L2');
+    equal(row(verified).retained, 'L1');
+    equal(Learning.subjectProfile(verified, 'chemistry')['mass-percentage'].retained, null);
+    const hinted = answerPractice(Core.createState(), candidates, [true, true, true, 'hint', 'hint'], knownTime);
+    equal(row(focusedRound(hinted, topic, 'spaced', laterTime)).level, 'L1');
+  });
+
+  await test('同类科学错因和间隔复测可追踪，并进入目标科目的学习计划与报告', () => {
+    const topic = 'trait-frequency';
+    const ids = Science.candidates({ subject: 'biology', topic, level: 'L3' }).slice(0, 5).map(item => item.id);
+    let state = placement('biology', () => true);
+    let current = start({ subject: 'biology', ids, count: ids.length }, state);
+    for (const id of ids) {
+      const q = byId.get(id);
+      const choice = Number(Object.keys(q.errorKinds).find(index => q.errorKinds[index] === 'denominator'));
+      current = Core.advanceSession(Core.gradeAnswer(current, questions, choice, laterTime), questions, laterTime);
+    }
+    state = current;
+    equal(Learning.subjectProfile(state, 'biology')[topic].level, 'L2');
+    const anchor = Coach.assessment(state, questions, new Date(laterTime))[topic];
+    equal(anchor.status, 'possible');
+    equal(anchor.error, 'denominator');
+    const probe = Coach.focusIds(state, topic, 'probe', 2, anchor);
+    assert(probe.length === 2 && probe.every(id => byId.get(id).level === 'L3' && byId.get(id).role === 'probe'));
+    const withPlan = { ...state, plan: Core.normalizePlan({ enabled: true, goal: 'biology', topic, minutes: 30 }) };
+    equal(Coach.learningPlan(withPlan, questions, new Date(laterTime)).review[0].focus, topic);
+    equal(Coach.report(state, questions, 7, new Date(laterTime)).topics[topic].total, 7);
+    equal(Backup.parse(Backup.serialize(withPlan), questions), Core.normalizeState(withPlan, questions));
+  });
+
   await test('所有函数 L3 变式的正确值可从题干数据重新算出', () => {
     for (const id of mathIds('functions', 'L3', 10)) {
       const item = byId.get(id);
       const [, first, second] = item.prompt.en.match(/f\(0\) = (\d+) and f\(2\) = (\d+)/);
       equal(Number(item.options[item.answer].en), Number(first) + (Number(second) - Number(first)) * 2.5);
+    }
+  });
+
+  await test('逐道验算新增数学变式，检查选项映射、题干和题号无重复', () => {
+    const additions = questions.filter(question => question.id.startsWith('focus-'));
+    equal(additions.length, 132);
+    equal(new Set(additions.map(q => q.prompt.en)).size, additions.length);
+    const toNumber = ({ en }) => {
+      const [n, d = 1] = en.split('/').map(Number);
+      return n / d;
+    };
+    for (const question of additions) {
+      for (const [choice, focus] of Object.entries(question.errors)) {
+        assert(Number(choice) !== question.answer && question.focus.includes(focus), question.id);
+      }
+      const check = question.verification;
+      if (!check) continue;
+      const { a, b, c, d, kind } = check;
+      const matches = question.options.map(toNumber).map(value => {
+        if (kind === 'equation') return a * value + b === c * value + d;
+        if (kind === 'product') return value === a * b;
+        if (kind === 'quotient') return value * b === a;
+        return Math.abs(value * a * b - (a + b)) < 1e-9;
+      });
+      equal(matches.indexOf(true), question.answer);
+      equal(matches.filter(Boolean).length, 1);
+    }
+  });
+
+  await test('未完成的起点测试不会在错题本或学习记录泄露答案', () => {
+    const ids = Learning.diagnosticIds('math');
+    const state = answerCurrent(start({ ids, count: ids.length, mode: 'diagnostic' }), false);
+    equal(Core.getStats(state, questions).total, 0);
+    equal(Core.getMistakes(state, questions).length, 0);
+    equal(Learning.topicProgress(state, new Date(knownTime)).arithmetic.total, 0);
+    equal(state.attempts.length, 1);
+  });
+
+  await test('单题只给错因线索，两道未见题出现相同错误才标记并连接前置知识', () => {
+    const date = new Date(knownTime);
+    let state = start({ ids: ['ma-a01'], count: 1 });
+    state = Core.advanceSession(Core.gradeAnswer(state, questions, 3, knownTime), questions, knownTime);
+    equal(Coach.assessment(state, questions, date).coefficient.status, 'possible');
+    equal(Coach.assessment(state, questions, date).balance.status, 'unassessed');
+    const ids = Coach.focusIds(state, 'coefficient', 'probe');
+    equal(ids.map(id => byId.get(id).variant), ['step', 'apply']);
+    assert(byId.get(ids[0]).variantGroup !== byId.get(ids[1]).variantGroup);
+    state = focusedRound(state, 'coefficient', 'probe', knownTime, false);
+    equal(Coach.assessment(state, questions, date).coefficient.status, 'confirmed');
+    assert(Coach.focusIds(state, 'coefficient', 'retake').every(id => !ids.includes(id)));
+    state = focusedRound(state, 'coefficient', 'retake', laterTime);
+    equal(Coach.assessment(state, questions, new Date(laterTime)).coefficient.status, 'verified');
+    assert(globalThis.EachVeyaSkills.skills.distribution.prerequisites.includes('coefficient'));
+    equal(Coach.assessment(Core.normalizeState(state, questions), questions, new Date(laterTime)), Coach.assessment(state, questions, new Date(laterTime)));
+  });
+
+  await test('只有独立完成不同的变式才延长间隔，过早复习不会提前消耗下一个间隔', () => {
+    const at = day => new Date(2026, 3, day, 9).toISOString();
+    let state = focusedRound(Core.createState(), 'balance', 'retake', at(2));
+    equal(Coach.assessment(state, questions, new Date(at(2))).balance.due, '2026-04-03');
+    state = focusedRound(state, 'balance', 'spaced', at(2));
+    equal(Coach.assessment(state, questions, new Date(at(2))).balance.interval, 1);
+    for (const [day, interval] of [[3, 3], [6, 7], [13, 14], [27, 30]]) {
+      state = focusedRound(state, 'balance', 'spaced', at(day));
+      const record = Coach.assessment(state, questions, new Date(at(day))).balance;
+      equal(record.interval, interval);
+      equal(record.lastCheck.independent, 1);
+      assert(!Coach.dueSkills(Coach.assessment(state, questions, new Date(at(day))), new Date(at(day))).includes('balance'));
+    }
+    state = focusedRound(state, 'balance', 'spaced', at(58), false);
+    const failed = Coach.assessment(state, questions, new Date(at(58))).balance;
+    equal(failed.interval, 0);
+    equal(failed.due, Core.localDate(new Date(at(58))));
+  });
+
+  await test('七个专项在确认错因并复测后都有不同的新题覆盖首轮五个间隔', () => {
+    const at = day => new Date(2026, 3, day, 9).toISOString();
+    for (const focus of Object.keys(globalThis.EachVeyaSkills.skills)) {
+      if (Science.topics[focus]) continue;
+      let state = focusedRound(Core.createState(), focus, 'probe', at(2), false);
+      state = focusedRound(state, focus, 'retake', at(2));
+      for (const day of [3, 6, 13, 27, 57]) state = focusedRound(state, focus, 'spaced', at(day));
+      equal(Coach.assessment(state, questions, new Date(at(57)))[focus].interval, 30);
+      equal(state.attempts.length, new Set(state.attempts.map(attempt => attempt.questionId)).size);
     }
   });
 
@@ -153,7 +339,7 @@
 
   await test('非法题数、科目和选项被拒绝，未作答不能前进', () => {
     for (const count of [0, 1.5, -1]) throws(() => start({ count }));
-    throws(() => start({ subject: 'physics' }));
+    throws(() => start({ subject: 'unknown-subject' }));
     const state = start();
     for (const choice of [-1, 4, null, 1.5, '1']) throws(() => Core.gradeAnswer(state, questions, choice));
     throws(() => Core.advanceSession(state, questions));
@@ -306,6 +492,19 @@
     equal(Core.updatePreferences(state, { ieltsTarget: '7.3' }).preferences.ieltsTarget, '');
   });
 
+  await test('通用英语按知识点独立推荐，手选等级依然有效', () => {
+    const ids = questions.filter(q => q.subject === 'english' && q.topic === 'grammar' && q.level === 'A1' && !q.focusOnly && !q.diagnosticOnly)
+      .slice(0, 5).map(q => q.id);
+    equal(ids.length, 5);
+    const partial = answerPractice(Core.createState(), ids.slice(0, 4), [true, true, true, true]);
+    equal(Learning.englishProfile(partial).grammar.level, 'A1');
+    const state = answerPractice(partial, ids.slice(4), [true]);
+    equal(Learning.englishProfile(state).grammar.level, 'A2');
+    equal(Learning.englishProfile(state).vocabulary.level, 'A1');
+    assert(Learning.practicePool(state, { subject: 'english', topic: 'grammar', level: 'auto' }).every(q => q.level === 'A2'));
+    assert(Learning.practicePool(state, { subject: 'english', topic: 'grammar', level: 'C2' }).every(q => q.level === 'C2'));
+  });
+
   await test('英语近期错题触发对应知识点建议，订正后从建议移除', () => {
     const now = new Date(2026, 3, 4, 9);
     let state = answerPractice(Core.createState(), ['en-v01', 'en-v07', 'en-g01'], [false, false, false]);
@@ -336,7 +535,7 @@
   await test('旧版迁移保留原始作答、成绩、语言、错题和未完练习', () => {
     const legacy = oldRecord();
     const state = Core.normalizeState(legacy, questions);
-    equal(state.version, 3);
+    equal(state.version, Core.VERSION);
     equal(state.language, 'en');
     equal(state.attempts.map(item => [item.questionId, item.choice, item.correct, item.hinted]), [
       ['en-g01', 0, false, null], ['ma-a01', 1, true, null]
@@ -349,19 +548,25 @@
     equal(Learning.mathProfile(state).algebra.evidence, 0);
   });
 
-  await test('新版优先读取 v2 并写入 v3，旧版备份保持完整', () => {
+  await test('新版可读 v4 与更早资料，旧版备份保持完整', () => {
     const legacyJson = JSON.stringify(oldRecord());
     const previous = JSON.stringify({ ...oldRecord(), version: 2, language: 'zh' });
     const data = new Map([[legacyKey, legacyJson]]);
     const storage = { getItem: name => data.get(name) ?? null, setItem: (name, value) => data.set(name, value) };
     equal(Core.readState(storage, key, [previousKey, legacyKey], questions).language, 'en');
     data.set(previousKey, previous);
-    const migrated = Core.readState(storage, key, [previousKey, legacyKey], questions);
+    const v3 = JSON.stringify({ ...oldRecord(), version: 3, language: 'en', generated: [] });
+    data.set(v3Key, v3);
+    const v4 = JSON.stringify({ ...oldRecord(), version: 4, language: 'zh', generated: [] });
+    data.set(v4Key, v4);
+    const migrated = Core.readState(storage, key, [v4Key, v3Key, previousKey, legacyKey], questions);
     equal(migrated.language, 'zh');
     equal(migrated.active.id, 'old-active');
     Core.saveState(storage, key, migrated);
     equal(data.get(legacyKey), legacyJson);
     equal(data.get(previousKey), previous);
+    equal(data.get(v3Key), v3);
+    equal(data.get(v4Key), v4);
     equal(Core.readState(storage, key, [previousKey, legacyKey], questions), migrated);
     data.set(key, '{damaged');
     throws(() => Core.readState(storage, key, [previousKey, legacyKey], questions));
@@ -376,6 +581,82 @@
     equal(restored.attempts.length, 1);
     equal(restored.active.index, 1);
     throws(() => Core.normalizeState({ version: 99, attempts: [], sessions: [] }, questions));
+  });
+
+  await test('两道快速错答让系统多收集证据，慢答和已存历史不会因速度降级', () => {
+    const ids = mathIds('algebra', 'L2', 5);
+    let state = start({ ids, count: ids.length });
+    ids.forEach((id, index) => {
+      const question = byId.get(id);
+      const choice = index === 0 ? question.answer : (question.answer + 1) % 4;
+      state = Core.advanceSession(Core.gradeAnswer(state, questions, choice, knownTime, index < 3 ? 800 : 25_000), questions, knownTime);
+    });
+    const row = Learning.mathProfile(Core.normalizeState(state, questions)).algebra;
+    equal(row.level, 'L2');
+    equal(row.lastBatch.pacedRecheck, true);
+    equal(state.attempts[2].durationMs, 800);
+  });
+
+  await test('日报、周报和月报用真实样本，过去无计时的记录不会补造学习时长', () => {
+    const now = new Date(2026, 5, 1, 13);
+    const date = (day, hour = 9) => new Date(2026, 4, day, hour).toISOString();
+    const ids = ['ma-a01', 'ma-n01', 'en-g01'];
+    let state = Core.createState();
+    for (const [index, at, choice, duration] of [[0, date(23), 1], [1, date(31), 0, 36_000], [2, date(32), 1, 20_000], [2, date(32, 14), 0, 15_000]]) {
+      const question = byId.get(ids[index]);
+      state = start({ subject: question.subject, ids: [question.id], count: 1 }, state);
+      state = Core.advanceSession(Core.gradeAnswer(state, questions, choice, at, duration), questions, at);
+    }
+    const weekly = Coach.report(state, questions, 7, now);
+    equal(weekly.recent, { total: 2, correct: 1, accuracy: 50, distinct: 2, timed: 2, durationMs: 56_000 });
+    equal(weekly.previous.total, 1);
+    equal(weekly.previous.timed, 0);
+    equal(weekly.errors, [['common-denominator', 1]]);
+    equal(Coach.report(state, questions, 30, now).recent.total, 3);
+    equal(Coach.report(state, questions, 1, now).recent.accuracy, 100);
+    equal(Coach.report(Core.createState(), questions, 30, now).recent.accuracy, null);
+  });
+
+  await test('计划以到期复习、近期练习、目标和可用时间作动态调整', () => {
+    const now = new Date(2026, 3, 3, 12);
+    const plan = Core.normalizePlan({ enabled: true, goal: 'math', topic: 'algebra', minutes: 10, deadline: '2026-04-06' });
+    equal(Core.normalizePlan({ ...plan, deadline: '2026-02-30' }).deadline, '');
+    const studied = focusedRound({ ...Core.createState(), plan }, 'coefficient', 'retake', knownTime);
+    const before = Coach.learningPlan(studied, questions, new Date(2026, 3, 2, 11));
+    const due = Coach.learningPlan(studied, questions, now);
+    equal(before.week.length, 7);
+    equal(before.weeks.at(-1).to, '2026-05-01');
+    equal(before.week[1].scheduled, [{ focus: 'coefficient', date: '2026-04-03' }]);
+    equal(due.review[0], { focus: 'coefficient', mode: 'spaced', count: 1 });
+    equal(due.practice.topic, 'algebra');
+    assert(due.practice.count <= 4 && due.deadlineSoon);
+    const finished = focusedRound(studied, 'coefficient', 'spaced', laterTime);
+    const next = Coach.learningPlan(finished, questions, now);
+    equal(next.dueCount, 0);
+    assert(next.slots < due.slots);
+    equal(Coach.learningPlan({ ...studied, plan: { ...plan, goal: 'english', topic: 'grammar' } }, questions, now).review.length, 0);
+  });
+
+  await test('备份兼容 v3，合并排序并保持幂等，冲突时保留两份原始作答', () => {
+    const old = Core.startAiSession(Core.createState(), questions, 'L2', aiFixture);
+    const oldCatalog = Core.questionsForState(questions, old);
+    const graded = Core.gradeAnswer(old, oldCatalog, 0, knownTime);
+    const migrated = Backup.parse(JSON.stringify({ ...graded, version: 3 }), questions);
+    equal(migrated.generated.length, 3);
+    equal(migrated.active.id, graded.active.id);
+    equal(migrated.attempts.length, 1);
+    equal(Backup.parse(Backup.serialize(migrated), questions), migrated);
+    const recent = answerPractice(Core.createState(), ['ma-n01'], [true], laterTime);
+    const earlier = answerPractice(Core.createState(), ['en-g01'], [false], knownTime);
+    const combined = Backup.merge(recent, earlier, questions);
+    equal(combined.sessions.map(session => session.completedAt), [knownTime, laterTime]);
+    equal(combined.attempts.length, 2);
+    equal(Backup.merge(combined, earlier, questions), combined);
+    throws(() => Backup.merge(start(), migrated, questions));
+    throws(() => Backup.parse(JSON.stringify({ ...migrated, attempts: [...migrated.attempts, { questionId: 'missing' }] }), questions));
+    const conflicting = Core.startAiSession(Core.createState(), questions, 'L2', [{ ...aiFixture[0], distractors: [8, 9, 10] }, ...aiFixture.slice(1)]);
+    throws(() => Backup.merge(migrated, conflicting, questions));
+    equal(migrated.attempts[0].choice, 0);
   });
 
   await test('最近两周进度按本地日期分段，在月末依然正确', () => {
@@ -480,6 +761,8 @@
 
   async function resetUi() {
     localStorage.removeItem(key);
+    localStorage.removeItem(v4Key);
+    localStorage.removeItem(v3Key);
     localStorage.removeItem(previousKey);
     localStorage.removeItem(legacyKey);
     replayStorage(key);
@@ -520,7 +803,7 @@
     assert(!element('#brand-local-name').hidden);
     assert(document.title.includes('EachVeya 学验共途'));
     equal(element('main h1').textContent, 'EachVeya 学验共途');
-    assert(element('.page-heading .subtitle').textContent.includes('中学生的英语和数学练习'));
+    assert(element('.page-heading .subtitle').textContent.includes('英语、数学、物理、化学与生物'));
     assert(element('.hero-copy p').textContent.includes('答案解析'));
     change('language', 'en');
     equal(document.documentElement.lang, 'en');
@@ -716,7 +999,7 @@
     assert(element('.feedback').textContent.includes('Explanation'));
     equal(read().active.id, 'old-active');
     change('language', 'zh');
-    equal(JSON.parse(localStorage.getItem(key)).version, 3);
+    equal(JSON.parse(localStorage.getItem(key)).version, Core.VERSION);
     equal(localStorage.getItem(legacyKey), payload);
     await go('mistakes', '.mistake-list');
     equal(document.querySelectorAll('.mistake-card').length, 1);
@@ -789,6 +1072,190 @@
     }
   });
 
+  await test('错题进入分步辅导、探查相同错因并完成变式复测', async () => {
+    await resetUi();
+    const now = new Date().toISOString();
+    let state = start({ ids: ['ma-a01'], count: 1 });
+    state = Core.advanceSession(Core.gradeAnswer(state, questions, 3, now), questions, now);
+    Core.saveState(localStorage, key, state);
+    replayStorage(key);
+    await go('mistakes', '.mistake-clue');
+    click('.mistake-clue a[href="#coach/coefficient"]');
+    await waitElement('.study-details');
+    assert(!element('.study-details').open);
+    click('[data-action="focus-practice"][data-mode="probe"]');
+    await waitElement('#question-title');
+    assert(!document.querySelector('[data-action="hint"]'));
+    for (let i = 0; i < 2; i++) {
+      click(`[data-choice="${Object.keys(current().errors)[0]}"]`);
+      click('[data-action="grade"]');
+      assert(!document.querySelector('.feedback .answer-line'));
+      click('[data-action="next"]');
+    }
+    await waitElement('.focus-result');
+    assert(element('.focus-result').textContent.includes('两道新题出现同类错误'));
+    click('.focus-result a');
+    await waitElement('[data-mode="retake"]');
+    click('[data-mode="retake"]');
+    await waitElement('#question-title');
+    await finishQuestions(() => true);
+    assert(element('.focus-result').textContent.includes('最近一次新题检验通过'));
+    assert(element('.focus-result').textContent.includes('下次复习'));
+    fitsViewport();
+    await resetUi();
+  });
+
+  await test('学习计划可编辑、发起正确主题练习并进入真实报告和备份入口', async () => {
+    await resetUi();
+    await go('report', '.report-map');
+    assert(element('.report-map').textContent.includes('尚未测评'));
+    assert(!document.querySelector('.report-charts'));
+    await go('plan', '#plan-form');
+    change('plan-goal', 'english');
+    change('plan-topic', 'grammar');
+    element('#plan-minutes').value = '8';
+    click('#plan-form button[type="submit"]');
+    await waitElement('.today-plan');
+    equal(read().plan.minutes, 8);
+    assert(element('.plan-preview').textContent.includes('未来 30 天'));
+    click('[data-action="plan-practice"]');
+    await waitElement('#question-title');
+    equal(current().topic, 'grammar');
+    await finishQuestions(() => true);
+    await go('report', '.report-charts');
+    assert(element('.report-totals').textContent.includes('100%'));
+    click('[data-days="30"]');
+    equal(document.querySelectorAll('.report-table tbody tr').length, 30);
+    change('language', 'en');
+    assert(element('.report-map').textContent.includes('Topic practice map'));
+    fitsViewport();
+    await go('records', '.backup-panel');
+    assert(element('[data-action="backup-export"]'));
+    assert(element('#backup-file'));
+    await resetUi();
+  });
+
+  await test('题目问题本地保存、可从记录页导出，并随备份迁移', async () => {
+    await resetUi();
+    const saved = answerPractice(Core.createState(), ['ma-a01'], [true]);
+    Core.saveState(localStorage, key, saved);
+    replayStorage(key);
+    await go('result', '.question-report');
+    element('.result-row > details').open = true;
+    element('.question-report').open = true;
+    element('[data-flag-reason]').value = 'answer';
+    click('[data-action="flag-question"]');
+    await waitElement('.question-report [role="status"]');
+    equal(read().flags.map(flag => [flag.questionId, flag.reason]), [['ma-a01', 'answer']]);
+    const fromBackup = Backup.parse(Backup.serialize(read()), questions);
+    equal(Backup.merge(Core.createState(), fromBackup, questions).flags, read().flags);
+    await go('records', '[data-action="flag-export"]');
+    await resetUi();
+  });
+
+  await test('本地 AI 不可用时一键开始三道同等级代数题', async () => {
+    await resetUi();
+    const config = element('meta[name="eachveya-ai-endpoint"]');
+    const original = config.dataset.origin;
+    config.dataset.origin = 'https://unavailable.example';
+    try {
+      await openSubject('math');
+      click('[data-action="skip-placement"]');
+      change('topic', 'algebra');
+      change('difficulty', 'L3');
+      click('[data-action="ai-fallback"]');
+      await waitElement('#question-title');
+      equal(read().active.mode, 'practice');
+      equal(read().active.questionIds.length, 3);
+      assert(read().active.questionIds.every(id => byId.get(id).topic === 'algebra' && byId.get(id).level === 'L3'));
+    } finally {
+      config.dataset.origin = original;
+      await resetUi();
+    }
+  });
+
+  await test('通过文件选择导入学习记录，重复导入不重复作答', async () => {
+    await resetUi();
+    const imported = answerPractice(Core.createState(), ['ma-a01'], [false]);
+    const payload = Backup.serialize(imported);
+    await go('records', '#backup-form');
+    for (const added of [1, 0]) {
+      element('.backup-panel').open = true;
+      const files = new DataTransfer();
+      files.items.add(new File([payload], 'EachVeya-test.json', { type: 'application/json' }));
+      element('#backup-file').files = files.files;
+      click('#backup-form button[type="submit"]');
+      await waitFor(() => document.querySelector('#backup-status')?.textContent.includes(`新增 ${added} 次作答`), 'Missing import result');
+      equal(read().attempts.length, 1);
+    }
+    await resetUi();
+  });
+
+  await test('新科学科目共享测评、五级选题、课程待审核状态和知识地图', async () => {
+    await resetUi();
+    await openSubject('chemistry');
+    assert(element('.placement-panel').textContent.includes('共 6 道'));
+    change('topic', 'amount-concentration');
+    change('difficulty', 'L5');
+    assert(element('#difficulty').selectedOptions[0].textContent.includes('深度探究'));
+    change('curriculum', 'ib');
+    assert(element('#setup-info').textContent.includes('待审核'));
+    assert(element('#practice-form button[type="submit"]').disabled);
+    assert(!document.querySelector('[data-action="science-bank"]'));
+    change('curriculum', '');
+    click('[data-action="science-bank"]');
+    await waitElement('#question-title');
+    equal(read().active.questionIds.length, 3);
+    assert(read().active.questionIds.every(id => id.startsWith('sci-amount-concentration-L5-')));
+    await finishQuestions(() => true);
+    await go('report', '.report-map');
+    assert(element('.report-map').textContent.includes('物质的量浓度'));
+    assert(element('.report-map').textContent.includes('尚未测评掌握等级'));
+    change('language', 'en');
+    assert(element('.report-map').textContent.includes('Population count density'));
+    fitsViewport();
+    await resetUi();
+  });
+
+  await test('科学 AI 组题用白名单校验、拒绝越界题、失败时保留本地题库入口', async () => {
+    await resetUi();
+    const config = element('meta[name="eachveya-ai-endpoint"]');
+    const original = { origin: config.dataset.origin, enabled: config.dataset.scienceAi };
+    const previousFetch = globalThis.fetch;
+    const expected = Science.candidates({ subject: 'biology', topic: 'population-density', level: 'L4' }).slice(0, 3).map(item => item.id);
+    let calls = 0;
+    try {
+      config.dataset.origin = location.origin;
+      config.dataset.scienceAi = 'enabled';
+      globalThis.fetch = async (url, options) => {
+        assert(url.endsWith('/api/science'));
+        equal(JSON.parse(options.body), { subject: 'biology', topic: 'population-density', level: 'L4', curriculum: '', weakness: '', avoid: [] });
+        calls++;
+        const ids = calls === 1 ? [expected[0], expected[0], 'ma-a01'] : expected;
+        return { ok: true, json: async () => ({ questionIds: ids }) };
+      };
+      await openSubject('biology');
+      change('topic', 'population-density');
+      change('difficulty', 'L4');
+      click('[data-action="science-ai"]');
+      await waitElement('.ai-notice');
+      await waitFor(() => element('.ai-notice').textContent.includes('未通过'), 'Invalid science response did not raise an error');
+      assert(element('[data-action="science-bank"]'));
+      equal(read().active, null);
+      click('[data-action="science-ai"]');
+      await waitElement('#question-title');
+      equal(read().active.mode, 'science-ai');
+      equal(read().active.questionIds, expected);
+      assert(element('.eyebrow').textContent.includes('AI 组题'));
+    } finally {
+      globalThis.fetch = previousFetch;
+      config.dataset.origin = original.origin;
+      if (original.enabled === undefined) delete config.dataset.scienceAi;
+      else config.dataset.scienceAi = original.enabled;
+      await resetUi();
+    }
+  });
+
   await test('AI 出题从数学设置开始，额度提示、验算保存和错题重做完整可用', async () => {
     const config = element('meta[name="eachveya-ai-endpoint"]');
     const previousEndpoint = config.content;
@@ -817,6 +1284,7 @@
       click('[data-action="ai-start"]');
       assert(element('[data-action="ai-start"]').disabled);
       await waitFor(() => element('.ai-notice').textContent.includes('额度已用完'), 'Missing quota notice');
+      equal(element('[data-action="ai-fallback"]').dataset.level, 'L2');
       equal(read().active, null);
       click('[data-action="ai-start"]');
       await waitElement('#question-title');

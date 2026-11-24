@@ -2,6 +2,7 @@
   'use strict';
   const { questions, topicsBySubject, levels } = globalThis.SmartStudyData;
   const Core = globalThis.SmartStudyCore;
+  const Science = globalThis.EachVeyaScience;
   const byId = new Map(questions.map(question => [question.id, question]));
   const EVIDENCE_COUNT = 5;
   const ENGLISH_PLACEMENT_LEVELS = levels.english.slice(0, 4);
@@ -15,18 +16,18 @@
   function placementResult(state, session) {
     if (!session || session.mode !== 'diagnostic') return null;
     const ids = diagnosticIds(session.subject);
-    if (ids.length !== session.questionIds.length || ids.some(id => !session.questionIds.includes(id))) return null;
+    if (!ids.length || ids.length !== session.questionIds.length || ids.some(id => !session.questionIds.includes(id))) return null;
     const answers = new Map(state.attempts.filter(attempt => attempt.sessionId === session.id).map(attempt => [attempt.questionId, attempt]));
     if (ids.some(id => !answers.has(id))) return null;
     const items = ids.map(id => ({ ...byId.get(id), correct: answers.get(id).correct }));
     const completedAt = session.completedAt;
-    if (session.subject === 'math') {
+    if (session.subject === 'math' || Science.subjects.includes(session.subject)) {
       const topics = {};
-      for (const topic of topicsBySubject.math) {
+      for (const topic of topicsBySubject[session.subject]) {
         const [foundation, challenge] = items.filter(item => item.topic === topic);
         let recommendation = 'L1';
-        if (foundation.correct && challenge.correct) recommendation = 'L4';
-        else if (foundation.correct || challenge.correct) recommendation = 'L2';
+        if (foundation.correct && challenge.correct) recommendation = session.subject === 'math' ? 'L4' : 'L3';
+        else if (foundation.correct || (session.subject === 'math' && challenge.correct)) recommendation = 'L2';
         topics[topic] = { level: recommendation, correct: Number(foundation.correct) + Number(challenge.correct), total: 2 };
       }
       return { completedAt, topics };
@@ -47,8 +48,69 @@
   }
 
   function mathProfile(state, placement = latestPlacement(state, 'math')) {
-    const adjustments = Object.fromEntries(topicsBySubject.math.map(topic => [topic, {
-      level: placement?.topics[topic].level ?? 'L2',
+    return adaptiveProfile(state, 'math', placement);
+  }
+
+  function englishProfile(state, placement = latestPlacement(state, 'english')) {
+    return adaptiveProfile(state, 'english', placement);
+  }
+
+  function subjectProfile(state, subject, placement = latestPlacement(state, subject)) {
+    if (Science.subjects.includes(subject)) return scienceProfile(state, subject, placement);
+    return adaptiveProfile(state, subject, placement);
+  }
+
+  function scienceProfile(state, subject, placement) {
+    const rows = Object.fromEntries(topicsBySubject[subject].map(topic => [topic, {
+      level: placement?.topics[topic].level || 'L1', basis: placement ? 'diagnostic' : 'starting',
+      samples: [], evidence: 0, lastBatch: null, retained: null, transfer: null, seen: new Set()
+    }]));
+    const cutoff = Date.parse(placement?.completedAt || '1970-01-01');
+    const reviewed = new Map(state.sessions.filter(session => session.mode === 'spaced').map(session => [session.id, session]));
+    for (const attempt of state.attempts) {
+      const question = byId.get(attempt.questionId);
+      if (question?.subject !== subject || Date.parse(attempt.at) < cutoff || attempt.hinted === null || question.diagnosticOnly) continue;
+      const row = rows[question.topic];
+      if (question.level !== row.level || row.seen.has(question.id)) continue;
+      if (['practice', 'science-ai'].includes(attempt.mode) && question.role === 'practice') {
+        row.seen.add(question.id);
+        row.samples.push({ ...attempt, error: attempt.correct ? '' : question.errorKinds[attempt.choice] });
+        row.evidence = row.samples.length;
+      } else if (question.role === 'transfer' && attempt.mode === 'spaced' && attempt.hinted === false && reviewed.has(attempt.sessionId)) {
+        const anchor = row.samples[0]?.at;
+        const completion = reviewed.get(attempt.sessionId).completedAt;
+        if (!anchor || Core.localDate(new Date(completion)) <= Core.localDate(new Date(anchor))) continue;
+        row.seen.add(question.id);
+        row.transfer = attempt.correct;
+        if (!attempt.correct) row.retained = null;
+      } else continue;
+      if (row.samples.length < EVIDENCE_COUNT) continue;
+      const batch = row.samples.slice(-EVIDENCE_COUNT);
+      const correct = batch.filter(item => item.correct).length;
+      const independent = batch.filter(item => item.correct && !item.hinted).length;
+      const errors = batch.flatMap(item => item.error ? [item.error] : []);
+      const repeated = errors.some((error, index) => errors.indexOf(error) !== index);
+      const direction = independent >= 4 && row.transfer === true ? 1 : correct <= 2 && (repeated || row.transfer === false) ? -1 : 0;
+      row.basis = 'practice';
+      row.lastBatch = { level: row.level, correct, independent, total: EVIDENCE_COUNT };
+      if (direction === 0) continue;
+      if (direction > 0) row.retained = row.level;
+      else row.retained = null;
+      const index = levels[subject].indexOf(row.level);
+      const level = levels[subject][Math.max(0, Math.min(4, index + direction))];
+      row.level = level;
+      row.samples = [];
+      row.evidence = 0;
+      row.transfer = null;
+    }
+    return Object.fromEntries(Object.entries(rows).map(([topic, { level, basis, evidence, lastBatch, retained }]) =>
+      [topic, { level, basis, evidence, lastBatch, retained }]));
+  }
+
+  function adaptiveProfile(state, subject, placement) {
+    const tiers = levels[subject];
+    const adjustments = Object.fromEntries(topicsBySubject[subject].map(topic => [topic, {
+      level: placement?.topics?.[topic]?.level ?? placement?.level ?? (subject === 'math' ? 'L2' : 'A1'),
       basis: placement ? 'diagnostic' : 'starting',
       seen: new Set(), samples: [], lastBatch: null
     }]));
@@ -56,7 +118,7 @@
 
     for (const attempt of state.attempts) {
       const question = byId.get(attempt.questionId);
-      if (question?.subject !== 'math' || attempt.mode !== 'practice' || typeof attempt.hinted !== 'boolean'
+      if (question?.subject !== subject || attempt.mode !== 'practice' || typeof attempt.hinted !== 'boolean'
         || question.diagnosticOnly || Date.parse(attempt.at) < cutoff) continue;
       const profile = adjustments[question.topic];
       if (question.level !== profile.level || profile.seen.has(question.id)) continue;
@@ -67,10 +129,13 @@
 
       const correct = profile.samples.filter(sample => sample.correct).length;
       const independent = profile.samples.filter(sample => sample.correct && sample.hinted === false).length;
-      const direction = independent >= 4 ? 1 : correct <= 2 ? -1 : 0;
-      const index = levels.math.indexOf(profile.level);
+      // Several very fast incorrect answers need more evidence before lowering a level.
+      const pacedRecheck = correct <= 2 && profile.samples.filter(sample => !sample.correct && sample.durationMs >= 20 && sample.durationMs < 2000).length >= 2;
+      const direction = independent >= 4 ? 1 : correct <= 2 && !pacedRecheck ? -1 : 0;
+      const index = tiers.indexOf(profile.level);
       profile.lastBatch = { level: profile.level, correct, independent, total: EVIDENCE_COUNT };
-      profile.level = levels.math[Math.max(0, Math.min(levels.math.length - 1, index + direction))];
+      if (pacedRecheck) profile.lastBatch.pacedRecheck = true;
+      profile.level = tiers[Math.max(0, Math.min(tiers.length - 1, index + direction))];
       profile.basis = 'practice';
       profile.samples = [];
     }
@@ -92,21 +157,18 @@
       .sort((a, b) => b.count - a.count);
   }
 
-  function recommendedEnglishLevel(state) {
-    return latestPlacement(state, 'english')?.level ?? 'A1';
-  }
-
-  function practicePool(state, { subject, topic, level }) {
-    const profiles = subject === 'math' && level === 'auto' ? mathProfile(state) : null;
-    const chosenLevel = subject === 'english' && level === 'auto' ? recommendedEnglishLevel(state) : level;
-    return questions.filter(question => question.subject === subject && !question.diagnosticOnly
-      && (!topic || question.topic === topic) && question.level === (profiles ? profiles[question.topic].level : chosenLevel));
+  function practicePool(state, { subject, topic, level, curriculum = '' }) {
+    const profiles = level === 'auto' && topicsBySubject[subject] ? subjectProfile(state, subject) : null;
+    return questions.filter(question => question.subject === subject && !question.diagnosticOnly && !question.focusOnly
+      && (!curriculum || question.curriculumRefs?.some(ref => ref.curriculum === curriculum))
+      && (!topic || question.topic === topic) && question.level === (profiles ? profiles[question.topic].level : level));
   }
 
   function practiceIds(state, options, random = Math.random) {
     const pool = practicePool(state, options);
     const topics = topicsBySubject[options.subject];
-    const ranked = options.subject === 'english' ? englishRecommendations(state).map(item => item.topic) : [];
+    const ranked = options.subject === 'english' ? englishRecommendations(state).map(item => item.topic)
+      : Science.subjects.includes(options.subject) ? Core.getMistakes(state, pool).map(item => item.question.topic) : [];
     const orderedTopics = [...new Set([...ranked, ...topics])];
     const attempted = new Set(state.attempts.map(attempt => attempt.questionId));
     const ids = [];
@@ -134,7 +196,7 @@
     const questionById = state.generated?.length
       ? new Map(Core.questionsForState(questions, state).map(question => [question.id, question])) : byId;
 
-    for (const attempt of state.attempts) {
+    for (const attempt of Core.reportableAttempts(state)) {
       const question = questionById.get(attempt.questionId);
       if (!question) continue;
       const row = rows[question.topic];
@@ -153,6 +215,6 @@
 
   globalThis.SmartStudyLearning = {
     EVIDENCE_COUNT, diagnosticIds, placementResult, latestPlacement, mathProfile,
-    englishRecommendations, recommendedEnglishLevel, practicePool, practiceIds, topicProgress
+    englishRecommendations, englishProfile, subjectProfile, practicePool, practiceIds, topicProgress
   };
 })();

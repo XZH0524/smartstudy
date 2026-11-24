@@ -11,8 +11,9 @@
   const subjects = [
     { id: 'english', label: bilingual('英语', 'English'), description: bilingual('从词汇到语法，读懂每一个句子。', 'Build confidence, one word and sentence at a time.'), symbol: 'Aa', available: true },
     { id: 'math', label: bilingual('数学', 'Mathematics'), description: bilingual('理清思路，找到解题的下一步。', 'Find the logic. Make your next step count.'), symbol: 'x²', available: true },
-    { id: 'physics', label: bilingual('物理', 'Physics'), symbol: '⚛', available: false },
-    { id: 'chemistry', label: bilingual('化学', 'Chemistry'), symbol: 'H₂', available: false }
+    { id: 'physics', label: bilingual('物理', 'Physics'), description: bilingual('用数据解释运动、电路和能量。', 'Explain motion, circuits and energy with data.'), symbol: 'v', available: true },
+    { id: 'chemistry', label: bilingual('化学', 'Chemistry'), description: bilingual('用质量、体积与比例理解物质。', 'Use mass, volume and ratios to understand matter.'), symbol: 'mol', available: true },
+    { id: 'biology', label: bilingual('生物', 'Biology'), description: bilingual('从细胞图像、遗传模型和种群数据认识生命。', 'Explore life through cell images, inheritance models and population data.'), symbol: 'µm', available: true }
   ];
   const topics = {
     grammar: bilingual('语法', 'Grammar'), vocabulary: bilingual('词汇', 'Vocabulary'), reading: bilingual('阅读', 'Reading'),
@@ -71,14 +72,19 @@
   ];
   const mathTopics = ['arithmetic', 'algebra', 'geometry', 'functions', 'statistics'];
   const englishTopics = ['vocabulary', 'grammar', 'reading'];
-  const levels = { math: ['L1', 'L2', 'L3', 'L4', 'L5'], english: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] };
+  const tiers = ['L1', 'L2', 'L3', 'L4', 'L5'];
+  const levels = { math: tiers, english: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'], physics: tiers, chemistry: tiers, biology: tiers };
+  const tierLabels = Object.fromEntries(tiers.map((tier, index) => [tier, [
+    bilingual('基础认知', 'Foundational recognition'), bilingual('知识理解', 'Conceptual understanding'), bilingual('知识应用', 'Application'),
+    bilingual('高级综合应用', 'Advanced synthesis'), bilingual('深度探究', 'In-depth inquiry')
+  ][index]]));
   const skills = {
     calculation: bilingual('计算', 'Calculation'), application: bilingual('知识应用', 'Application'),
     reasoning: bilingual('逻辑推理', 'Reasoning')
   };
   const curricula = [
     ['cn', '中国课程', 'China curriculum'], ['gcse', 'GCSE', 'GCSE'], ['igcse', 'IGCSE', 'IGCSE'],
-    ['common-core', '美国 Common Core', 'US Common Core'], ['ib', 'IB', 'IB']
+    ['common-core', '美国 Common Core', 'US Common Core'], ['ib', 'IB', 'IB'], ['a-level', 'A-Level', 'A-Level'], ['ap', 'AP', 'AP']
   ].map(([id, zh, en]) => ({ id, label: bilingual(zh, en) }));
   const legacyLevels = {
     'en-g01': 'A1', 'en-g02': 'A1', 'en-g03': 'A2', 'en-g04': 'B1', 'en-g05': 'A2', 'en-g06': 'B1', 'en-g07': 'B1', 'en-g08': 'A1',
@@ -103,7 +109,7 @@
   });
 
   globalThis.SmartStudyData = {
-    subjects, topics, topicsBySubject: { math: mathTopics, english: englishTopics }, levels, skills, curricula,
+    subjects, topics, topicsBySubject: { math: mathTopics, english: englishTopics }, levels, tierLabels, skills, curricula,
     bilingual, questions: legacyQuestions
   };
 })();
