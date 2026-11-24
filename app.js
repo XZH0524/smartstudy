@@ -5,12 +5,43 @@
   const AI = globalThis.EachVeyaAi;
   const Science = globalThis.EachVeyaScience;
   const Coach = globalThis.EachVeyaCoach;
-  const { skills: focusSkills } = globalThis.EachVeyaSkills;
+  const focusSkills = globalThis.EachVeyaSkills?.skills;
   const StudyUI = globalThis.EachVeyaStudyUI;
   const Backup = globalThis.EachVeyaBackup;
-  const { subjects, topics, topicsBySubject, levels, tierLabels, skills, curricula, questions: bank } = globalThis.SmartStudyData;
+  const data = globalThis.SmartStudyData;
+  const main = document.getElementById('main');
+
+  // Reading history with an incomplete bank can drop otherwise valid answers.
+  const practiceCounts = new Map();
+  for (const question of data?.questions || []) {
+    if (!question.diagnosticOnly && !question.focusOnly) {
+      practiceCounts.set(question.subject, (practiceCounts.get(question.subject) || 0) + 1);
+    }
+  }
+  const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
+    !available || practiceCounts.get(id) >= 400);
+  if (!completeBank || [Core, Learning, AI, Science, Coach, focusSkills, StudyUI, Backup].some(component => !component)) {
+    document.getElementById('language').disabled = true;
+    main.innerHTML = `<section class="panel configuration" role="alert">
+      <h1>练习页面未加载完整</h1>
+      <p>请刷新后重试。此浏览器中的学习记录已保留。</p>
+      <p lang="en">Practice could not finish loading. Reload to try again. Your study history is still saved in this browser.</p>
+      <button id="startup-reload" type="button" class="button">重新加载 · Reload</button>
+    </section>`;
+    document.getElementById('startup-reload').addEventListener('click', () => location.reload());
+    return;
+  }
+
+  const { subjects, topics, topicsBySubject, levels, tierLabels, skills, curricula, questions: bank } = data;
   const brandName = 'EachVeya';
-  const testing = new URLSearchParams(location.search).get('test') === '1';
+  const localPreview = location.protocol === 'file:' || ['127.0.0.1', 'localhost', '[::1]'].includes(location.hostname);
+  const currentUrl = new URL(location.href);
+  const testing = localPreview && currentUrl.searchParams.get('test') === '1';
+  if (!localPreview && currentUrl.searchParams.has('test')) {
+    currentUrl.searchParams.delete('test');
+    currentUrl.hash = 'home';
+    history.replaceState(history.state, '', currentUrl);
+  }
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
   const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
@@ -115,7 +146,6 @@
     aiInvalid: ['本组题未通过验算或与旧题重复。请再试一次。', 'This set failed verification or repeated a previous question. Please try again.'],
     aiFailure: ['暂时无法生成题目。请稍后重试，或开始题库练习。', 'Questions could not be generated. Try again later or practise from the question bank.']
   };
-  const main = document.getElementById('main');
   let storageIssue = '';
   let persistent = true;
   let state = loadState();

@@ -29,7 +29,7 @@
   <script src="study-coach.js?v=2.6" defer></script>
   <script src="study-ui.js?v=2.6" defer></script>
   <script src="study-backup.js?v=2.5" defer></script>
-  <script src="app.js?v=2.6" defer></script>
+  <script src="app.js?v=2.6.1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main" id="skip-link">跳至主要内容</a>
@@ -40,11 +40,17 @@
         <span><span class="brand-name">EachVeya</span><span id="brand-local-name" class="brand-local-name" lang="zh-CN">学验共途</span></span>
       </a>
       <nav id="navigation" aria-label="主导航"></nav>
-      <div class="sidebar-bottom"><span class="local-icon" aria-hidden="true">◉</span><p id="local-label"></p><span class="version">v2.6</span></div>
+      <div class="sidebar-bottom"><span class="local-icon" aria-hidden="true">◉</span><p id="local-label"></p><span class="version">v2.6.1</span></div>
     </aside>
     <div class="workspace">
       <header class="topbar"><div class="breadcrumb" id="breadcrumb"></div><div class="topbar-actions"><label class="sr-only" for="language" id="language-label">界面语言</label><select id="language"><option value="zh">中文</option><option value="en">English</option></select><span class="avatar" aria-hidden="true">S</span></div></header>
-      <main id="main" tabindex="-1"></main>
+      <main id="main" tabindex="-1">
+        <section class="panel configuration" role="status">
+          <h1>EachVeya 学验共途</h1>
+          <p>正在加载练习。如果一直停留在这里，请刷新浏览器页面。</p>
+          <p lang="en">Loading practice. Refresh this page if it does not continue.</p>
+        </section>
+      </main>
       <footer id="footer"></footer>
     </div>
   </div>
