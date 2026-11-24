@@ -2,13 +2,14 @@
   'use strict';
   const Core = globalThis.SmartStudyCore;
   const Learning = globalThis.SmartStudyLearning;
-  const { subjects, topics, topicsBySubject, levels, skills, curricula, questions } = globalThis.SmartStudyData;
+  const AI = globalThis.EachVeyaAi;
+  const { subjects, topics, topicsBySubject, levels, skills, curricula, questions: bank } = globalThis.SmartStudyData;
   const brandName = 'EachVeya';
-  const testing = new URLSearchParams(location.search).get('test');
+  const testing = new URLSearchParams(location.search).get('test') === '1';
   // The original keys also hold the records created before the rename.
-  const LEGACY_STORAGE_KEY = testing ? 'smart-study.tests.v1' : 'smart-study.v1';
-  const STORAGE_KEY = LEGACY_STORAGE_KEY.replace(/v1$/, 'v2');
-  const byId = new Map(questions.map(question => [question.id, question]));
+  const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
+  const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v2`, `${storagePrefix}.v1`];
+  const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     home: ['学习主页', 'Overview'], practice: ['开始练习', 'Practice'], mistakes: ['错题复习', 'Mistakes'], records: ['学习记录', 'Progress'],
     skip: ['跳至主要内容', 'Skip to main content'], navigation: ['主导航', 'Main navigation'], language: ['界面语言', 'Interface language'],
@@ -86,18 +87,34 @@
     continue: ['开始新练习', 'Start new practice'], storageUnavailable: ['浏览器无法保存记录。你仍可练习，但关闭或刷新页面后，本次记录可能丢失。请在普通浏览模式下打开。', 'This browser cannot save your progress. You can practise, but this session may be lost after closing or refreshing. Try a normal browsing window.'],
     storageDamaged: ['学习记录无法读取。浏览器里的原记录已保留，本次作答暂时无法保存。', 'Saved study data could not be read. The existing record is kept, and answers in this session cannot be saved.'],
     noMatch: ['当前条件没有题目，请调整设置。', 'No questions match. Please adjust the settings.'], changed: ['另一窗口已更新学习记录，页面已同步。', 'Study history changed in another window. This page is now up to date.'],
-    error: ['操作未完成，请重新选择练习后再试。', 'The action could not be completed. Please choose a practice and try again.'], today: ['今天', 'Today']
+    error: ['操作未完成，请重新选择练习后再试。', 'The action could not be completed. Please choose a practice and try again.'], today: ['今天', 'Today'],
+    aiTitle: ['AI 出题', 'AI practice'],
+    aiScope: ['一元一次方程 L1–L3，每组 3 题。DeepSeek 选择方程参数，程序生成选项并验算答案。', 'Three linear equations per set at L1–L3. DeepSeek chooses the equation parameters. The app builds the choices and checks each answer.'],
+    aiStart: ['生成 {level} 练习', 'Generate {level} practice'],
+    aiMistakes: ['按近期错题出题（{level}）', 'Generate from recent mistakes ({level})'],
+    aiGenerated: ['AI 生成 · 已验算', 'AI-generated · Answer checked'],
+    aiOffline: ['AI 出题服务待启用。', 'AI generation has yet to be activated.'],
+    aiOnline: ['到 EachVeya 在线版使用 AI 出题', 'Use AI practice on the EachVeya website'],
+    aiSelection: ['请选择「代数」或「所有知识点」，并使用推荐等级或 L1–L3。', 'Choose Algebra or All topics, then choose a recommended level or L1–L3.'],
+    aiLoading: ['正在生成和验算题目…', 'Generating and checking questions…'],
+    aiLimit: ['AI 出题额度已用完。你仍可做题库练习。', 'The AI allowance has been used. Bank questions are still available.'],
+    aiInvalid: ['本组题未通过验算或与旧题重复。请再试一次。', 'This set failed verification or repeated a previous question. Please try again.'],
+    aiFailure: ['暂时无法生成题目。请稍后重试，或开始题库练习。', 'Questions could not be generated. Try again later or practise from the question bank.']
   };
   const main = document.getElementById('main');
   let storageIssue = '';
   let persistent = true;
   let state = loadState();
+  let questions = Core.questionsForState(bank, state);
+  let byId = new Map(questions.map(question => [question.id, question]));
   let selected = null;
   let selectedQuestion = '';
   let setup = { subject: 'english', level: state.preferences.englishLevel || 'auto', topic: '', count: '8', track: 'cefr' };
   let forceSetup = false;
   let mistakeFilter = 'all';
   let resultId = null;
+  let aiRequest = null;
+  let aiNotice = '';
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
@@ -114,7 +131,7 @@
 
   function loadState() {
     try {
-      const saved = Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEY, questions);
+      const saved = Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEYS, bank);
       storageIssue = '';
       persistent = true;
       return saved;
@@ -124,16 +141,21 @@
       return Core.createState();
     }
   }
+  function setState(next) {
+    state = next;
+    questions = Core.questionsForState(bank, state);
+    byId = new Map(questions.map(question => [question.id, question]));
+  }
   function commit(update) {
     if (persistent) {
       try {
-        state = Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEY, questions);
+        setState(Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEYS, bank));
       } catch (error) {
         persistent = false;
         storageIssue = error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
       }
     }
-    state = update(state);
+    setState(update(state));
     try {
       if (persistent) Core.saveState(localStorage, STORAGE_KEY, state);
     } catch (_) {
@@ -197,7 +219,7 @@
       <section class="stats-grid" aria-label="${t('workspace')}">${statCard('answered', stats.total, t('questionsUnit'), '▤')}${statCard('accuracy', stats.accuracy === null ? '—' : `${stats.accuracy}%`, stats.accuracy === null ? t('noData') : '', '◎')}${statCard('pending', stats.mistakes, t('questionsUnit'), '▧')}</section>
       <section><div class="section-heading"><h2>${t('subjects')}</h2><span class="section-note">${t('available', { n: subjects.filter(subject => subject.available).length })}</span></div><div class="subject-grid">${subjects.filter(subject => subject.available).map(subject => {
         const stats = Core.getStats(state, questions, subject.id);
-        const total = questions.filter(question => question.subject === subject.id && !question.diagnosticOnly).length;
+        const total = bank.filter(question => question.subject === subject.id && !question.diagnosticOnly).length;
         return `<article class="subject-card ${subject.id}"><div class="subject-top"><span class="subject-symbol" aria-hidden="true">${subject.symbol}</span><span class="subject-meta">${t('questionBank', { n: total })}</span></div><h3>${text(subject.label)}</h3><p class="subject-description">${text(subject.description)}</p><div class="subject-footer"><span class="subject-coverage">${t('coverage', { n: stats.total })}</span>${button(t('start'), 'subject', 'secondary', `data-subject="${subject.id}"`)}</div></article>`;
       }).join('')}</div></section>
       <div class="lower-grid"><section class="panel"><div class="section-heading"><h2>${t('activity')}</h2><span class="section-note">${t('lastWeek')}</span></div><div class="week-chart">${days.map((day, index) => `<div class="chart-column ${index === 6 ? 'today' : ''}" aria-label="${escapeHtml(day.date.toLocaleDateString(locale()))} ${t('questionCount', { n: day.total })}"><span class="bar-number">${day.total}</span><span class="bar-space"><span class="bar" style="height:${Math.max(3, day.total / max * 100)}%"></span></span><span>${index === 6 ? t('today') : escapeHtml(day.date.toLocaleDateString(locale(), { weekday: 'short' }))}</span></div>`).join('')}</div></section>
@@ -247,6 +269,37 @@
     </section>`;
   }
 
+  const aiConfig = document.querySelector('meta[name="eachveya-ai-endpoint"]');
+  const aiEndpoint = () => aiConfig?.content.trim() || '';
+  const aiRunsHere = () => !aiConfig?.dataset.origin || aiConfig.dataset.origin === location.origin;
+
+  function selectedAiLevel() {
+    if (setup.subject !== 'math' || (setup.topic && setup.topic !== 'algebra')) return '';
+    if (setup.level !== 'auto') return AI.LEVELS.includes(setup.level) ? setup.level : '';
+    const recommended = Learning.mathProfile(state).algebra.level;
+    return AI.LEVELS.includes(recommended) ? recommended : AI.LEVELS.at(-1);
+  }
+
+  function renderAiPanel() {
+    const level = selectedAiLevel();
+    const onlineOnly = aiEndpoint() && !aiRunsHere();
+    const enabled = Boolean(aiEndpoint() && !onlineOnly && level);
+    const recent = enabled && Core.getMistakes(state, questions).find(({ question, attempt }) =>
+      question.topic === 'algebra' && AI.LEVELS.includes(question.level)
+        && Date.parse(attempt.at) >= Date.now() - 14 * 86400000);
+    const notice = !aiEndpoint() ? 'aiOffline' : !level ? 'aiSelection' : aiRequest ? 'aiLoading' : aiNotice;
+    return `<section class="placement-panel ai-panel" aria-labelledby="ai-heading">
+      <div><h3 id="ai-heading">${t('aiTitle')}</h3><p>${t('aiScope')}</p></div>
+      ${enabled ? `<div class="inline-actions">
+        ${button(t('aiStart', { level }), 'ai-start', 'secondary', `data-level="${level}" ${aiRequest ? 'disabled' : ''}`)}
+        ${recent ? button(t('aiMistakes', { level: recent.question.level }), 'ai-start', 'secondary',
+          `data-level="${recent.question.level}" ${aiRequest ? 'disabled' : ''}`) : ''}
+      </div>` : ''}
+      ${onlineOnly ? `<a href="https://xzh0524.github.io/smartstudy/#practice" data-online-practice>${t('aiOnline')}</a>`
+        : notice ? `<p class="ai-notice" role="status">${t(notice)}</p>` : ''}
+    </section>`;
+  }
+
   function renderSetup() {
     const { subject, topic, level, count, track } = setup;
     const math = subject === 'math';
@@ -292,6 +345,7 @@
             ? t('setupInfo', { n: pool.length, count: number }) : t('emptyMatch')}</p>
           <p class="inline-error" id="practice-error" role="alert" hidden></p>
           <div class="setup-submit"><button class="button" type="submit" ${!pool.length ? 'disabled' : ''}>${t('start')}</button></div>
+          ${math ? renderAiPanel() : ''}
           ${math ? `<details class="curriculum-plan">
             <summary>${t('curriculumPlan')}</summary><p>${t('curriculumStatus')}</p>
             <ul>${curricula.map(item => `<li>${text(item.label)}</li>`).join('')}</ul>
@@ -342,7 +396,7 @@
   }
 
   function modeLabel(mode) {
-    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode' })[mode]);
+    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle' })[mode]);
   }
 
   function renderQuestion() {
@@ -388,6 +442,7 @@
       </div>
       <section class="panel question-card">
         <div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${escapeHtml(question.level)}</span>
+          ${question.ai ? `<span class="tag">${t('aiGenerated')}</span>` : ''}
           ${question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
         <div class="options" role="radiogroup" aria-labelledby="question-title">${options}</div>
@@ -478,6 +533,7 @@
     return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue === 'confirm'), { once: true }));
   }
   async function begin(options) {
+    if (aiRequest) { cancelAiRequest(); render(); }
     const previousId = state.active?.id;
     if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
     commit(current => {
@@ -487,13 +543,76 @@
       const count = options.count === 'all' ? ids.length : Number(options.count);
       return Core.startSession(current, questions, { ...options, ids, count });
     });
+    showActivePractice();
+  }
+
+  function showActivePractice() {
     forceSetup = false;
     selected = null;
     go('practice');
     window.scrollTo(0, 0);
     main.focus();
   }
+
+  function cancelAiRequest() {
+    aiRequest?.abort();
+    aiRequest = null;
+    aiNotice = '';
+  }
+
+  async function beginAi(level) {
+    const endpoint = aiEndpoint();
+    if (!endpoint || !aiRunsHere() || aiRequest || !selectedAiLevel() || !AI.LEVELS.includes(level)) return;
+    const previousId = state.active?.id;
+    const request = new AbortController();
+    aiRequest = request;
+    aiNotice = '';
+    render();
+    announce(t('aiLoading'));
+    let timeout;
+    let started = false;
+    try {
+      if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
+      if (aiRequest !== request) return;
+      const avoid = state.generated.filter(spec => spec.level === level).slice(-8).map(AI.signature);
+      timeout = setTimeout(() => request.abort(), 25000);
+      const response = await fetch(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'omit', signal: request.signal, body: JSON.stringify({ level, avoid })
+      });
+      if (aiRequest !== request) return;
+      if (!response.ok) {
+        aiNotice = response.status === 429 ? 'aiLimit' : response.status === 422 ? 'aiInvalid' : 'aiFailure';
+        return;
+      }
+      const { questions: items } = await response.json();
+      if (aiRequest !== request || route() !== 'practice') return;
+      if (!AI.validateBatch(items, level, state.generated)) { aiNotice = 'aiInvalid'; return; }
+      commit(current => {
+        if (current.active?.id !== previousId) throw new Error('The active practice changed');
+        return Core.startAiSession(current, bank, level, items);
+      });
+      started = true;
+    } catch (_) {
+      if (aiRequest === request) aiNotice = 'aiFailure';
+    } finally {
+      clearTimeout(timeout);
+      if (aiRequest === request) {
+        aiRequest = null;
+        if (started) showActivePractice();
+        else if (route() === 'practice') {
+          render();
+          if (aiNotice) {
+            announce(t(aiNotice));
+            main.querySelector('[data-action="ai-start"]')?.focus();
+          }
+        }
+      }
+    }
+  }
+
   function openSetup(subject, topic = '') {
+    cancelAiRequest();
     setup = {
       ...setup, subject, topic, track: 'cefr',
       level: subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
@@ -523,6 +642,7 @@
   main.addEventListener('change', event => {
     const { id, value } = event.target;
     if (!['subject', 'topic', 'difficulty', 'count', 'ielts-target'].includes(id)) return;
+    cancelAiRequest();
     if (id === 'subject') {
       openSetup(value);
     } else {
@@ -590,9 +710,10 @@
       }
       if (action === 'home') go('home');
       if (action === 'records') go('records');
-      if (action === 'resume') { forceSetup = false; go('practice'); }
+      if (action === 'resume') { cancelAiRequest(); forceSetup = false; go('practice'); }
       if (action === 'setup') { forceSetup = true; go('practice'); }
       if (action === 'subject' || action === 'topic-practice') openSetup(target.dataset.subject, target.dataset.topic);
+      if (action === 'ai-start') await beginAi(target.dataset.level);
       if (action === 'skip-placement') {
         commit(current => Core.updatePreferences(current, { mathPlacementDeferred: true }));
         render();
@@ -641,23 +762,26 @@
     main.querySelector(`[data-choice="${choice}"]`).click();
   });
   window.addEventListener('hashchange', () => {
-    if (route() !== 'practice') forceSetup = false;
+    if (route() !== 'practice') {
+      cancelAiRequest();
+      forceSetup = false;
+    }
     render();
     window.scrollTo(0, 0);
     main.focus();
   });
   window.addEventListener('storage', event => {
-    if (event.key !== STORAGE_KEY && event.key !== LEGACY_STORAGE_KEY && event.key !== null) return;
-    state = loadState();
+    if (event.key !== STORAGE_KEY && !LEGACY_STORAGE_KEYS.includes(event.key) && event.key !== null) return;
+    setState(loadState());
     if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
     selected = null;
     render();
     announce(t('changed'));
   });
   render();
-  if (new URLSearchParams(location.search).get('test') === '1') {
+  if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.2';
+    script.src = 'tests.js?v=2.3';
     document.body.appendChild(script);
   }
 })();

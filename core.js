@@ -1,11 +1,12 @@
 (function () {
   'use strict';
-  const VERSION = 2;
+  const VERSION = 3;
+  const AI = globalThis.EachVeyaAi;
   const englishLevels = globalThis.SmartStudyData.levels.english;
   const dateIsValid = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
   const unique = values => [...new Set(values)];
   const makeId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const sessionMode = value => value === 'review' || value === 'diagnostic' ? value : 'practice';
+  const sessionMode = value => ['review', 'diagnostic', 'ai'].includes(value) ? value : 'practice';
 
   function normalizePreferences(value) {
     const target = typeof value?.ieltsTarget === 'string' ? Number(value.ieltsTarget) : 0;
@@ -17,14 +18,28 @@
   }
 
   function createState() {
-    return { version: VERSION, language: 'zh', preferences: normalizePreferences(), attempts: [], sessions: [], active: null };
+    return { version: VERSION, language: 'zh', preferences: normalizePreferences(), attempts: [], sessions: [], active: null, generated: [] };
+  }
+
+  function questionsForState(questions, state) {
+    return state.generated?.length ? [...questions, ...state.generated.map(AI.makeQuestion)] : questions;
   }
 
   function normalizeState(raw, questions) {
-    if (!raw || ![1, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || ![1, 2, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
-    const byId = new Map(questions.map(question => [question.id, question]));
+    const generated = [];
+    const used = new Set();
+    for (const stored of raw.version === VERSION && Array.isArray(raw.generated) ? raw.generated : []) {
+      const spec = AI.normalizeSpec(stored, stored?.level);
+      if (!spec) continue;
+      const key = AI.signature(spec);
+      if (used.has(key)) continue;
+      used.add(key);
+      generated.push(spec);
+    }
+    const byId = new Map(questionsForState(questions, { generated }).map(question => [question.id, question]));
     const attemptsBySession = new Map();
     const attempts = [];
     for (const entry of raw.attempts) {
@@ -78,13 +93,17 @@
       }
     }
     return {
-      version: VERSION, language: raw.language === 'en' ? 'en' : 'zh', preferences: normalizePreferences(raw.preferences), attempts, sessions, active
+      version: VERSION, language: raw.language === 'en' ? 'en' : 'zh',
+      preferences: normalizePreferences(raw.preferences), attempts, sessions, active, generated
     };
   }
 
-  function readState(storage, key, legacyKey, questions) {
-    const saved = storage.getItem(key) ?? storage.getItem(legacyKey);
-    return saved === null ? createState() : normalizeState(JSON.parse(saved), questions);
+  function readState(storage, key, legacyKeys, questions) {
+    for (const name of [key, ...[].concat(legacyKeys)]) {
+      const saved = storage.getItem(name);
+      if (saved !== null) return normalizeState(JSON.parse(saved), questions);
+    }
+    return createState();
   }
 
   function saveState(storage, key, state) {
@@ -144,6 +163,14 @@
     } };
   }
 
+  function startAiSession(state, questions, level, items) {
+    const specs = AI.validateBatch(items, level, state.generated);
+    if (!specs) throw new Error('Invalid generated questions');
+    const next = { ...state, generated: [...(state.generated || []), ...specs] };
+    const ids = specs.map(spec => AI.makeQuestion(spec).id);
+    return startSession(next, questionsForState(questions, next), { subject: 'math', ids, count: ids.length, mode: 'ai' });
+  }
+
   function revealHint(state, questions) {
     const session = state.active;
     if (!session || session.mode === 'diagnostic') return state;
@@ -193,7 +220,7 @@
   }
 
   globalThis.SmartStudyCore = {
-    VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats,
-    shuffled, chooseQuestions, startSession, revealHint, gradeAnswer, advanceSession, localDate, dailyStats
+    VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
+    shuffled, chooseQuestions, startSession, startAiSession, revealHint, gradeAnswer, advanceSession, localDate, dailyStats
   };
 })();

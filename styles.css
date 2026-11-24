@@ -676,6 +676,13 @@ footer {
   background:#eff3f9;
   border-color:#dae3f0;
 }
+.ai-panel {
+  margin-top:20px;
+}
+.ai-panel .ai-notice {
+  flex-basis:100%;
+  margin-top:0;
+}
 .ielts-panel .field {
   width:min(100%, 260px);
 }

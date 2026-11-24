@@ -3,10 +3,17 @@
   'use strict';
   const Core = globalThis.SmartStudyCore;
   const Learning = globalThis.SmartStudyLearning;
+  const AI = globalThis.EachVeyaAi;
   const { questions, subjects, topics, topicsBySubject, levels, skills, curricula } = globalThis.SmartStudyData;
   const byId = new Map(questions.map(question => [question.id, question]));
-  const key = 'smart-study.tests.v2';
+  const key = 'smart-study.tests.v3';
+  const previousKey = 'smart-study.tests.v2';
   const legacyKey = 'smart-study.tests.v1';
+  const aiFixture = [
+    { a: 3, b: 2, c: 0, d: 14, form: 'plain', distractors: [3, 5, 6] },
+    { a: 6, b: -4, c: 0, d: 14, form: 'plain', distractors: [2, 4, 5] },
+    { a: -2, b: 3, c: 0, d: 9, form: 'plain', distractors: [3, -6, 0] }
+  ];
   const results = [];
   const assert = (condition, message = 'Assertion failed') => {
     if (!condition) throw new Error(message);
@@ -329,7 +336,7 @@
   await test('旧版迁移保留原始作答、成绩、语言、错题和未完练习', () => {
     const legacy = oldRecord();
     const state = Core.normalizeState(legacy, questions);
-    equal(state.version, 2);
+    equal(state.version, 3);
     equal(state.language, 'en');
     equal(state.attempts.map(item => [item.questionId, item.choice, item.correct, item.hinted]), [
       ['en-g01', 0, false, null], ['ma-a01', 1, true, null]
@@ -342,16 +349,22 @@
     equal(Learning.mathProfile(state).algebra.evidence, 0);
   });
 
-  await test('新版保存使用新键，原始 v1 备份内容保持完整', () => {
+  await test('新版优先读取 v2 并写入 v3，旧版备份保持完整', () => {
     const legacyJson = JSON.stringify(oldRecord());
+    const previous = JSON.stringify({ ...oldRecord(), version: 2, language: 'zh' });
     const data = new Map([[legacyKey, legacyJson]]);
     const storage = { getItem: name => data.get(name) ?? null, setItem: (name, value) => data.set(name, value) };
-    const migrated = Core.readState(storage, key, legacyKey, questions);
+    equal(Core.readState(storage, key, [previousKey, legacyKey], questions).language, 'en');
+    data.set(previousKey, previous);
+    const migrated = Core.readState(storage, key, [previousKey, legacyKey], questions);
+    equal(migrated.language, 'zh');
+    equal(migrated.active.id, 'old-active');
     Core.saveState(storage, key, migrated);
     equal(data.get(legacyKey), legacyJson);
-    equal(Core.readState(storage, key, legacyKey, questions), migrated);
+    equal(data.get(previousKey), previous);
+    equal(Core.readState(storage, key, [previousKey, legacyKey], questions), migrated);
     data.set(key, '{damaged');
-    throws(() => Core.readState(storage, key, legacyKey, questions));
+    throws(() => Core.readState(storage, key, [previousKey, legacyKey], questions));
     equal(data.get(key), '{damaged');
   });
 
@@ -376,6 +389,38 @@
     const daily = Core.dailyStats(state, now);
     equal(Core.localDate(daily[0].date), '2026-02-24');
     equal(daily[0].total, 1);
+  });
+
+  await test('AI 方程独立验算，拒绝错误难度、重复方程、分数解和重复选项', () => {
+    const batch = AI.validateBatch(aiFixture, 'L2');
+    const items = batch.map(AI.makeQuestion);
+    equal(items.map(item => item.options[item.answer].en), ['4', '3', '-3']);
+    assert(items.every(item => new Set(item.options.map(option => option.zh)).size === 4));
+    assert(!AI.validateBatch(aiFixture, 'L1'));
+    assert(!AI.validateBatch([aiFixture[0], aiFixture[0], aiFixture[2]], 'L2'));
+    assert(!AI.validateBatch(aiFixture, 'L2', batch));
+    assert(!AI.normalizeSpec({ ...aiFixture[0], d: 13 }, 'L2'));
+    assert(!AI.normalizeSpec({ ...aiFixture[0], distractors: [3, 3, 6] }, 'L2'));
+    assert(!AI.normalizeSpec({ ...aiFixture[0], distractors: [3, 4, 6] }, 'L2'));
+    const grouped = AI.normalizeSpec({ a: 2, b: 3, c: 1, d: 11, form: 'grouped', distractors: [2, 3, 6] }, 'L3');
+    const question = AI.makeQuestion(grouped);
+    assert(question.prompt.en.includes('2(x + 3) = x + 11'));
+    equal(question.options[question.answer].en, '5');
+  });
+
+  await test('AI 题保存并恢复作答和错题，计入记录但不参与等级调整', () => {
+    const previous = answerPractice(Core.createState(), ['en-v01'], [true]);
+    let state = Core.startAiSession(previous, questions, 'L2', aiFixture);
+    const catalog = Core.questionsForState(questions, state);
+    const first = catalog.find(question => question.id === state.active.questionIds[0]);
+    state = Core.gradeAnswer(state, catalog, (first.answer + 1) % 4, laterTime);
+    state = Core.normalizeState(JSON.parse(JSON.stringify(state)), questions);
+    equal(state.active.mode, 'ai');
+    equal(state.attempts.length, 2);
+    equal(Core.getMistakes(state, Core.questionsForState(questions, state))[0].question, first);
+    equal(Learning.topicProgress(state, new Date(2026, 3, 5)).algebra.total, 1);
+    equal(Learning.mathProfile(state).algebra.evidence, 0);
+    throws(() => Core.startAiSession(state, questions, 'L2', aiFixture));
   });
 
   if (typeof document === 'undefined') {
@@ -420,9 +465,12 @@
   }
 
   const waitElement = selector => waitFor(() => document.querySelector(selector), `Missing ${selector}`);
-  const read = () => Core.readState(localStorage, key, legacyKey, questions);
+  const read = () => Core.readState(localStorage, key, [previousKey, legacyKey], questions);
   const replayStorage = name => window.dispatchEvent(new StorageEvent('storage', { key: name }));
-  const current = () => byId.get(read().active.questionIds[read().active.index]);
+  const current = () => {
+    const state = read();
+    return Core.questionsForState(questions, state).find(item => item.id === state.active.questionIds[state.active.index]);
+  };
   const submitForm = () => click('#practice-form button[type="submit"]');
 
   async function go(hash, selector) {
@@ -432,6 +480,7 @@
 
   async function resetUi() {
     localStorage.removeItem(key);
+    localStorage.removeItem(previousKey);
     localStorage.removeItem(legacyKey);
     replayStorage(key);
     await go('home', '.subject-grid');
@@ -667,7 +716,7 @@
     assert(element('.feedback').textContent.includes('Explanation'));
     equal(read().active.id, 'old-active');
     change('language', 'zh');
-    equal(JSON.parse(localStorage.getItem(key)).version, 2);
+    equal(JSON.parse(localStorage.getItem(key)).version, 3);
     equal(localStorage.getItem(legacyKey), payload);
     await go('mistakes', '.mistake-list');
     equal(document.querySelectorAll('.mistake-card').length, 1);
@@ -736,6 +785,60 @@
     } finally {
       if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
       else delete window.localStorage;
+      await resetUi();
+    }
+  });
+
+  await test('AI 出题从数学设置开始，额度提示、验算保存和错题重做完整可用', async () => {
+    const config = element('meta[name="eachveya-ai-endpoint"]');
+    const previousEndpoint = config.content;
+    const previousOrigin = config.dataset.origin;
+    const previousFetch = globalThis.fetch;
+    let calls = 0;
+    try {
+      config.content = 'https://eachveya.example/api/generate';
+      config.dataset.origin = 'https://offline.example';
+      globalThis.fetch = async (url, options) => {
+        equal(url, config.content);
+        equal(JSON.parse(options.body), { level: 'L2', avoid: [] });
+        calls++;
+        return calls === 1 ? { ok: false, status: 429 } : { ok: true, json: async () => ({ questions: aiFixture }) };
+      };
+      await resetUi();
+      await openSubject('math');
+      click('[data-action="skip-placement"]');
+      assert(element('[data-online-practice]'));
+      assert(!document.querySelector('[data-action="ai-start"]'));
+      config.dataset.origin = location.origin;
+      change('topic', 'geometry');
+      assert(!document.querySelector('[data-action="ai-start"]'));
+      change('topic', 'algebra');
+      change('difficulty', 'L2');
+      click('[data-action="ai-start"]');
+      assert(element('[data-action="ai-start"]').disabled);
+      await waitFor(() => element('.ai-notice').textContent.includes('额度已用完'), 'Missing quota notice');
+      equal(read().active, null);
+      click('[data-action="ai-start"]');
+      await waitElement('#question-title');
+      equal(calls, 2);
+      equal(read().active.questionIds.length, 3);
+      assert(element('.question-tags').textContent.includes('AI 生成'));
+      const wrong = current().id;
+      await answerUi(false);
+      replayStorage(key);
+      assert(element('.feedback').textContent.includes('正确答案'));
+      await finishQuestions(() => true);
+      await go('mistakes', '.mistake-card');
+      click(`[data-action="review-one"][data-id="${wrong}"]`);
+      await waitElement('#question-title');
+      await finishQuestions(() => true);
+      equal(Core.getMistakes(read(), Core.questionsForState(questions, read())).length, 0);
+      fitsViewport();
+    } finally {
+      config.content = previousEndpoint;
+      if (previousOrigin === undefined) delete config.dataset.origin;
+      else config.dataset.origin = previousOrigin;
+      globalThis.fetch = previousFetch;
       await resetUi();
     }
   });

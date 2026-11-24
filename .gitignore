@@ -1,0 +1,5 @@
+# Local deployment credentials and build files
+.dev.vars*
+.env*
+.wrangler/
+node_modules/

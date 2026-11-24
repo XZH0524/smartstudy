@@ -131,9 +131,11 @@
     const rows = Object.fromEntries(Object.values(topicsBySubject).flat().map(topic => [topic, {
       total: 0, correct: 0, recent: { total: 0, correct: 0 }, previous: { total: 0, correct: 0 }
     }]));
+    const questionById = state.generated?.length
+      ? new Map(Core.questionsForState(questions, state).map(question => [question.id, question])) : byId;
 
     for (const attempt of state.attempts) {
-      const question = byId.get(attempt.questionId);
+      const question = questionById.get(attempt.questionId);
       if (!question) continue;
       const row = rows[question.topic];
       const at = Date.parse(attempt.at);
