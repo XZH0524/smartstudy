@@ -48,6 +48,7 @@
     planUpcoming: ['未来 7 天', 'Next 7 days'], planMonth: ['未来 30 天', 'Next 30 days'],
     planExamSoon: ['考前一周优先巩固已有知识，并缩短新练习。', 'In the week before the exam, prioritise review and keep new sets short.'],
     planMoreDue: ['有 {n} 个到期专项。今天按优先顺序安排可完成的部分。', '{n} skills are due. Today’s plan schedules what fits the available time.'],
+    planNeedsVariants: ['{n} 个到期专项暂缺没做过的复测题。可先看辅导或练同一知识点。', '{n} due skills need fresh transfer questions. Open the guide or practise the topic in the meantime.'],
     planForecast: ['预览会随新的作答、复习结果和目标调整。', 'This preview shifts with new answers, review results and goals.'],
     planScheduled: ['已安排复习', 'Scheduled review'], planProposed: ['建议练习', 'Suggested practice'],
     report: ['学习报告', 'Study report'], reportIntro: ['根据已提交的作答比较表现，并查看下一步可练的知识点。', 'Compare submitted answers and choose what to practise next.'],
@@ -60,7 +61,9 @@
     reportDate: ['日期', 'Date'], reportTable: ['查看图表数据', 'View chart data'],
     reportMap: ['知识点练习地图', 'Topic practice map'], reportEvidence: ['{n} 道不同题，{correct}/{total} 次答对', '{n} distinct questions, {correct}/{total} answers correct'],
     reportSparse: ['样本较少', 'Small sample'], reportSkillNote: ['正确率描述本时段做过的题目。每个知识点同时显示题数。', 'Accuracy describes answers from this period. Each topic also shows the sample size.'],
-    reportMistakes: ['常见错因线索', 'Common mistake patterns'], reportMistakeCount: ['出现 {n} 次', 'Observed {n} times'],
+    reportMistakes: ['常见错因线索', 'Common mistake patterns'],
+    reportMistakeCount: ['{attempts} 次线索，来自 {distinct} 道不同题', '{attempts} clues across {distinct} distinct questions'],
+    reportMistakeKind: ['{kind} · {n} 次', '{kind} · {n} times'],
     reportNext: ['下一步', 'Suggested next step'], reportNextTopic: ['试练「{topic}」', 'Try “{topic}”'],
     reportNoMistakes: ['本时段暂时没有可归类的错因线索。', 'No identifiable mistake patterns in this period yet.'],
     paceRecheck: ['这一组出现多次很快的错误回答。先保留当前等级，继续积累练习证据。', 'Several incorrect answers came very quickly. The current level stays in place while more evidence is collected.'],
@@ -165,6 +168,7 @@
           <p>${t(plan.slots ? 'planBudget' : 'planBudgetDone', { minutes: settings.minutes, n: plan.slots })}</p>
           ${plan.deadlineSoon ? `<p class="field-help">${t('planExamSoon')}</p>` : ''}
           ${plan.dueCount ? `<p class="field-help">${t('planMoreDue', { n: plan.dueCount })}</p>` : ''}
+          ${plan.unavailableReview.length ? `<p class="field-help">${t('planNeedsVariants', { n: plan.unavailableReview.length })}</p><p>${reviews(plan.unavailableReview.map(focus => ({ focus })))}</p>` : ''}
           ${plan.review.length ? `<ul class="study-skill-list">${plan.review.map(item => `<li>
             <strong>${text(skills[item.focus].label)}</strong><div class="study-actions">
             ${linkToCoach(item.focus, t('coachJump'))}${button(t(item.mode), 'focus-practice', 'secondary', `data-focus="${item.focus}" data-mode="${item.mode}"`)}</div></li>`).join('')}</ul>` : ''}
@@ -228,9 +232,11 @@
           }).join('')}</ul></section>`).join('')}</div>
         </section>
         <div class="study-grid report-recommendations"><section class="panel study-panel"><h2>${t('reportMistakes')}</h2>
-          ${report.errors.length ? `<ul class="study-skill-list">${report.errors.map(([id, n]) => `<li><a href="${coachUrl(id)}">${text(skills[id].label)}</a><span class="field-help">${t('reportMistakeCount', { n })}</span></li>`).join('')}</ul>` : `<p>${t('reportNoMistakes')}</p>`}
+          ${report.errors.length ? `<ul class="study-skill-list">${report.errors.map(row => `<li><a href="${coachUrl(row.focus)}">${text(skills[row.focus].label)}</a>
+            <span class="field-help">${t('reportMistakeCount', row)}</span>
+            ${row.kinds.length ? `<span class="field-help">${row.kinds.map(([kind, n]) => t('reportMistakeKind', { kind: Science.errorLabels[kind][language()], n })).join(' / ')}</span>` : ''}</li>`).join('')}</ul>` : `<p>${t('reportNoMistakes')}</p>`}
         </section><section class="panel study-panel"><h2>${t('reportNext')}</h2><div class="study-actions">
-          ${report.errors.length ? linkToCoach(report.errors[0][0], t('coachJump')) : nextTopic ? button(t('reportNextTopic', { topic: topics[nextTopic][language()] }), 'topic-practice', 'secondary',
+          ${report.errors.length ? linkToCoach(report.errors[0].focus, t('coachJump')) : nextTopic ? button(t('reportNextTopic', { topic: topics[nextTopic][language()] }), 'topic-practice', 'secondary',
             `data-subject="${Object.keys(topicsBySubject).find(subject => topicsBySubject[subject].includes(nextTopic))}" data-topic="${nextTopic}"`) : ''}
           <a class="button secondary" href="#plan">${t('plan')}</a></div></section></div>`;
     }

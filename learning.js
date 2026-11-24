@@ -25,6 +25,7 @@
       const topics = {};
       for (const topic of topicsBySubject[session.subject]) {
         const [foundation, challenge] = items.filter(item => item.topic === topic);
+        if (!foundation || !challenge) continue;
         let recommendation = 'L1';
         if (foundation.correct && challenge.correct) recommendation = session.subject === 'math' ? 'L4' : 'L3';
         else if (foundation.correct || (session.subject === 'math' && challenge.correct)) recommendation = 'L2';
@@ -61,17 +62,18 @@
   }
 
   function scienceProfile(state, subject, placement) {
-    const rows = Object.fromEntries(topicsBySubject[subject].map(topic => [topic, {
-      level: placement?.topics[topic].level || 'L1', basis: placement ? 'diagnostic' : 'starting',
-      samples: [], evidence: 0, lastBatch: null, retained: null, transfer: null, seen: new Set()
-    }]));
-    const cutoff = Date.parse(placement?.completedAt || '1970-01-01');
+    const rows = Object.fromEntries(topicsBySubject[subject].map(topic => {
+      const diagnostic = placement?.topics[topic];
+      return [topic, { level: diagnostic?.level || 'L1', basis: diagnostic ? 'diagnostic' : 'starting',
+        cutoff: diagnostic ? Date.parse(placement.completedAt) : -Infinity,
+        samples: [], evidence: 0, lastBatch: null, retained: null, transfer: null, seen: new Set() }];
+    }));
     const reviewed = new Map(state.sessions.filter(session => session.mode === 'spaced').map(session => [session.id, session]));
     for (const attempt of state.attempts) {
       const question = byId.get(attempt.questionId);
-      if (question?.subject !== subject || Date.parse(attempt.at) < cutoff || attempt.hinted === null || question.diagnosticOnly) continue;
+      if (question?.subject !== subject || attempt.hinted === null || question.diagnosticOnly) continue;
       const row = rows[question.topic];
-      if (question.level !== row.level || row.seen.has(question.id)) continue;
+      if (Date.parse(attempt.at) < row.cutoff || question.level !== row.level || row.seen.has(question.id)) continue;
       if (['practice', 'science-ai'].includes(attempt.mode) && question.role === 'practice') {
         row.seen.add(question.id);
         row.samples.push({ ...attempt, error: attempt.correct ? '' : question.errorKinds[attempt.choice] });

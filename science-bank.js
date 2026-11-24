@@ -187,6 +187,8 @@
       return Boolean(published && option.zh === published.zh && option.en === published.en);
     }
     const { type, n, d, adjustedD, adjustedN, choices, scale, pairs, order } = check;
+    if (!Array.isArray(order) || order.length !== 4 || new Set(order).size !== 4
+      || order.some(index => !Number.isInteger(index) || index < 0 || index > 3)) return false;
     const matches = order.filter(index => {
       if (type === 'ratio') return Math.abs(choices[index] * d - n * scale) < 1e-9;
       if (type === 'scaled') return choices[index] * d === n * adjustedD;
@@ -195,7 +197,7 @@
       return type === 'comparison' && pairs[index][0] * d === n * pairs[index][1];
     });
     if (matches.length !== 1 || order[question.answer] !== matches[0]) return false;
-    return !choices || Number.parseFloat(question.options[question.answer].en) === choices[matches[0]];
+    return !choices || ['zh', 'en'].every(lang => Number.parseFloat(question.options[question.answer][lang]) === choices[matches[0]]);
   }
 
   for (const [subject, domain, domainZh, domainEn, id, zh, en, nZh, nEn, dZh, dEn, numeratorUnit, denominatorUnit, unit, percent, ctxZh, ctxEn] of fields) {

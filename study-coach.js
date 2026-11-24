@@ -106,7 +106,8 @@
       const topic = Science.topics[focus];
       const level = record?.level || Learning.subjectProfile(state, topic.subject)[focus].level;
       const role = mode === 'probe' ? 'probe' : 'transfer';
-      const options = Science.questions.filter(question => question.topic === focus && question.level === level && question.role === role && !used.has(question.id));
+      const pool = topic.denominator ? Science.questions : Science.focusQuestions || [];
+      const options = pool.filter(question => question.topic === focus && question.level === level && question.role === role && !used.has(question.id));
       const error = record?.error;
       const related = error && role === 'probe' ? options.filter(question => Object.values(question.errorKinds).includes(error)) : [];
       const selected = (related.length >= count ? related : options).slice(0, count);
@@ -168,7 +169,14 @@
       if (!question) continue;
       topicRows[question.topic].push(attempt);
       const focus = mistakeFocus(question, attempt);
-      if (focus) errors.set(focus, (errors.get(focus) || 0) + 1);
+      if (focus) {
+        const entry = errors.get(focus) || { focus, attempts: 0, questions: new Set(), kinds: new Map() };
+        entry.attempts++;
+        entry.questions.add(question.id);
+        const kind = question.errorKinds?.[attempt.choice];
+        if (kind) entry.kinds.set(kind, (entry.kinds.get(kind) || 0) + 1);
+        errors.set(focus, entry);
+      }
     }
     const topics = Object.fromEntries(Object.entries(topicRows).map(([topic, attempts]) => [topic, counts(attempts)]));
     const daily = Array.from({ length }, (_, index) => {
@@ -177,7 +185,9 @@
     });
     return {
       recent: counts(recent), previous: counts(previous), topics, daily,
-      errors: [...errors.entries()].sort((a, b) => b[1] - a[1])
+      errors: [...errors.values()].map(({ focus, attempts, questions, kinds }) => ({ focus, attempts,
+        distinct: questions.size, kinds: [...kinds].sort((a, b) => b[1] - a[1]) }))
+        .sort((a, b) => b.distinct - a.distinct || b.attempts - a.attempts)
     };
   }
 
@@ -197,14 +207,16 @@
     const completed = attempts.filter(attempt => dayAt(new Date(attempt.at)) === today);
     const usedSeconds = completed.reduce((total, attempt) => total + (attempt.durationMs ? attempt.durationMs / 1000 : pace), 0);
     const slots = Math.max(0, Math.min(12 - completed.length, Math.floor((settings.minutes * 60 - usedSeconds) / pace)));
-    const review = [];
-    let remaining = slots;
-    for (const focus of due) {
-      if (review.length >= 2 || remaining < 1) break;
+    const dueTasks = due.map(focus => {
       const mode = ['verified', 'scheduled'].includes(profile[focus].status) ? 'spaced' : profile[focus].status === 'confirmed' ? 'retake' : 'probe';
       const count = mode === 'spaced' ? 1 : 2;
-      const ids = focusIds(state, focus, mode, count, profile[focus]);
-      if (remaining < count || !ids.length) continue;
+      return { focus, mode, count, ready: focusIds(state, focus, mode, count, profile[focus]).length === count };
+    });
+    const review = [];
+    let remaining = slots;
+    for (const { focus, mode, count, ready } of dueTasks) {
+      if (review.length >= 2 || remaining < 1) break;
+      if (remaining < count || !ready) continue;
       review.push({ focus, mode, count });
       remaining -= count;
     }
@@ -242,7 +254,8 @@
       from: dayAt(now, from), to: dayAt(now, to), topic: choices[index % choices.length]?.topic,
       scheduled: upcoming.filter(item => item.date >= dayAt(now, from) && item.date <= dayAt(now, to))
     }));
-    return { review, practice, placement, week, weeks, dueCount: due.length, slots, usedSeconds, pace, deadlineSoon };
+    return { review, practice, placement, week, weeks, dueCount: due.length,
+      unavailableReview: dueTasks.filter(task => !task.ready).map(task => task.focus), slots, usedSeconds, pace, deadlineSoon };
   }
 
   globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, dueSkills, report, learningPlan, intervals };

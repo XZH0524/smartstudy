@@ -40,7 +40,7 @@
     mathScale: ['题目难度按知识点分别推荐。掌握情况以作答证据为准。', 'Practice difficulty is suggested per topic. Mastery depends on the available evidence.'],
     scienceScope: ['课程范围', 'Curriculum scope'], generalScience: ['通用科学', 'General science'],
     scopePlanned: ['{course} 专项课程映射待审核。请选择通用科学使用现有题目。', '{course} curriculum mapping is awaiting review. Select General science to use the current bank.'],
-    sciencePlacementInfo: ['每个知识点各两题，共 {n} 道。结果用于选择练习起点。', 'Two questions per topic, {n} in total. Results suggest where to start practising.'],
+    sciencePlacementInfo: ['三个核心知识点各两题，共 {n} 道。其他知识点会根据后续练习积累证据。', 'Two questions on each of three core topics, {n} in total. Other topics build evidence through practice.'],
     scienceBank: ['从校验题库组题', 'Build a validated practice set'],
     scienceAi: ['AI 按薄弱点组题', 'Assemble a set with AI'], scienceAiMode: ['AI 组题 · 已校验', 'AI-assembled · validated'],
     scienceAiOffline: ['本地可从已校验的模板组题。', 'Build a set from validated templates locally.'],
@@ -999,7 +999,7 @@
   render();
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.5';
+    script.src = 'tests.js?v=2.6';
     document.body.appendChild(script);
   }
 })();

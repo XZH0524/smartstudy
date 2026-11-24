@@ -146,16 +146,16 @@
     }
   });
 
-  await test('三门科学每门三个领域及知识点，全部五级覆盖并校验数值与证据题', () => {
+  await test('三门科学每门七个知识点，保留核心起点测试及已校验的组题题库', () => {
     equal(Science.questions.length, 918);
     equal(new Set(Science.questions.map(item => item.prompt.en)).size, 918);
     for (const subject of Science.subjects) {
-      equal(topicsBySubject[subject].length, 3);
-      equal(new Set(topicsBySubject[subject].map(topic => Science.topics[topic].domain)).size, 3);
+      equal(topicsBySubject[subject].length, 7);
+      equal(new Set(topicsBySubject[subject].map(topic => Science.topics[topic].domain)).size, 7);
       equal(Learning.diagnosticIds(subject).length, 6);
       for (const topic of topicsBySubject[subject]) for (const level of levels[subject]) {
         const items = Science.candidates({ subject, topic, level });
-        equal(items.length, 8);
+        equal(items.length, Science.topics[topic].denominator ? 8 : 0);
         assert(items.every(item => Science.validate(item) && item.safety === 'virtual-data' && item.curriculumRefs.length === 0));
         for (const curriculum of Science.curriculumKeys) {
           equal(Science.scopes[subject][curriculum].status, 'planned');
@@ -179,9 +179,25 @@
     const physics = placement('physics', question => question.topic === 'average-speed' || question.topic === 'ohmic-current' && question.level === 'L1');
     const profile = Learning.subjectProfile(physics, 'physics');
     equal([profile['average-speed'].level, profile['ohmic-current'].level, profile['energy-efficiency'].level], ['L3', 'L2', 'L1']);
-    assert(Object.values(profile).every(row => row.basis === 'diagnostic' && row.retained === null));
+    equal(Object.values(profile).filter(row => row.basis === 'diagnostic').length, 3);
+    assert(Object.values(profile).every(row => row.retained === null));
+    equal(profile['forces-motion'].basis, 'starting');
+    equal(profile['forces-motion'].level, 'L1');
     assert(Object.values(Learning.subjectProfile(physics, 'biology')).every(row => row.basis === 'starting' && row.retained === null));
-    equal(Learning.practicePool(physics, { subject: 'physics', topic: 'average-speed', level: 'L5' }).length, 8);
+    equal(Learning.practicePool(physics, { subject: 'physics', topic: 'average-speed', level: 'L5' }).length, 16);
+  });
+
+  await test('每科各有 400 道免费题，新增科学知识点用未见的跨日复测升级', () => {
+    for (const subject of subjects) equal(questions.filter(item => item.subject === subject.id && !item.focusOnly && !item.diagnosticOnly).length, 400);
+    const topic = 'forces-motion';
+    const pool = Learning.practicePool(Core.createState(), { subject: 'physics', topic, level: 'L1' });
+    equal(pool.length, 8);
+    const practiced = answerPractice(Core.createState(), pool.slice(0, 5).map(item => item.id), Array(5).fill(true), knownTime);
+    equal(Learning.subjectProfile(practiced, 'physics')[topic].retained, null);
+    const after = focusedRound(practiced, topic, 'spaced', laterTime);
+    equal(Learning.subjectProfile(after, 'physics')[topic].retained, 'L1');
+    equal(Learning.subjectProfile(after, 'physics')[topic].level, 'L2');
+    equal(Learning.subjectProfile(after, 'physics')['thermal-models'].retained, null);
   });
 
   await test('科学多题独立答对后仍需隔日复测；一次答错或低参与不调级', () => {
@@ -324,8 +340,8 @@
 
   await test('常规练习筛选领域和等级并排除诊断专用题', () => {
     const ids = Core.chooseQuestions(questions, { subject: 'math', topic: 'geometry', level: 'L5', count: 100 });
-    equal(ids.length, 10);
-    equal(new Set(ids).size, 10);
+    equal(ids.length, 13);
+    equal(new Set(ids).size, 13);
     assert(ids.every(id => byId.get(id).topic === 'geometry' && byId.get(id).level === 'L5' && !byId.get(id).diagnosticOnly));
   });
 
@@ -611,10 +627,28 @@
     equal(weekly.recent, { total: 2, correct: 1, accuracy: 50, distinct: 2, timed: 2, durationMs: 56_000 });
     equal(weekly.previous.total, 1);
     equal(weekly.previous.timed, 0);
-    equal(weekly.errors, [['common-denominator', 1]]);
+    equal(weekly.errors, [{ focus: 'common-denominator', attempts: 1, distinct: 1, kinds: [] }]);
     equal(Coach.report(state, questions, 30, now).recent.total, 3);
     equal(Coach.report(state, questions, 1, now).recent.accuracy, 100);
     equal(Coach.report(Core.createState(), questions, 30, now).recent.accuracy, null);
+  });
+
+  await test('报告优先显示来自不同题的线索，不因一题反复答错而挤到最前', () => {
+    const now = new Date(2026, 5, 1, 13);
+    let state = Core.createState();
+    const science = Science.questions.filter(item => item.subject === 'physics' && item.role === 'practice'
+      && Object.values(item.errorKinds).includes('denominator'));
+    const distinct = science.filter(item => item.topic === science[0].topic).slice(0, 2);
+    const repeated = byId.get('ma-n01');
+    for (const [index, item] of [repeated, repeated, repeated, ...distinct].entries()) {
+      const at = new Date(now.getTime() - (10 - index) * 1000).toISOString();
+      const choice = item === repeated ? 0 : Number(Object.keys(item.errorKinds).find(key => item.errorKinds[key] === 'denominator'));
+      state = start({ subject: item.subject, ids: [item.id], count: 1 }, state);
+      state = Core.advanceSession(Core.gradeAnswer(state, questions, choice, at), questions, at);
+    }
+    const { errors } = Coach.report(state, questions, 7, now);
+    equal(errors[0], { focus: distinct[0].topic, attempts: 2, distinct: 2, kinds: [['denominator', 2]] });
+    equal(errors[1].distinct, 1);
   });
 
   await test('计划以到期复习、近期练习、目标和可用时间作动态调整', () => {
@@ -635,6 +669,24 @@
     equal(next.dueCount, 0);
     assert(next.slots < due.slots);
     equal(Coach.learningPlan({ ...studied, plan: { ...plan, goal: 'english', topic: 'grammar' } }, questions, now).review.length, 0);
+  });
+
+  await test('计划标明暂缺新题的复测项目，已练旧题不作为新题派发', () => {
+    const now = new Date(2026, 3, 3, 12);
+    const plan = Core.normalizePlan({ enabled: true, goal: 'math', topic: 'algebra', minutes: 15 });
+    let state = { ...Core.createState(), plan };
+    const used = questions.filter(item => item.variant && item.focus.includes('coefficient'));
+    assert(used.length > 0);
+    for (const question of used) {
+      state = start({ subject: question.subject, ids: [question.id], count: 1 }, state);
+      state = Core.advanceSession(Core.gradeAnswer(state, questions, question.answer, knownTime), questions, knownTime);
+    }
+    state = start({ subject: 'math', ids: ['ma-a01'], count: 1 }, state);
+    state = Core.advanceSession(Core.gradeAnswer(state, questions, 3, now.toISOString()), questions, now.toISOString());
+    const calculated = Coach.learningPlan(state, questions, now);
+    equal(calculated.unavailableReview, ['coefficient']);
+    equal(calculated.review, []);
+    equal(calculated.practice.topic, 'algebra');
   });
 
   await test('备份兼容 v3，合并排序并保持幂等，冲突时保留两份原始作答', () => {
@@ -877,7 +929,7 @@
     equal(element('#topic').value, 'functions');
     change('difficulty', 'L5');
     change('count', '5');
-    assert(element('#setup-info').textContent.includes('10 questions'));
+    assert(element('#setup-info').textContent.includes('13 questions'));
     submitForm();
     await waitElement('#question-title');
     equal(read().active.questionIds.length, 5);
@@ -927,7 +979,7 @@
     change('language', 'zh');
     change('topic', 'reading');
     change('difficulty', 'C2');
-    assert(element('#setup-info').textContent.includes('2'));
+    assert(element('#setup-info').textContent.includes('14 道'));
     click('[data-track="ielts"]');
     change('ielts-target', '7.0');
     equal(read().preferences.ieltsTarget, '7.0');
@@ -1206,7 +1258,7 @@
     click('[data-action="science-bank"]');
     await waitElement('#question-title');
     equal(read().active.questionIds.length, 3);
-    assert(read().active.questionIds.every(id => id.startsWith('sci-amount-concentration-L5-')));
+    assert(read().active.questionIds.every(id => byId.get(id).topic === 'amount-concentration' && byId.get(id).level === 'L5'));
     await finishQuestions(() => true);
     await go('report', '.report-map');
     assert(element('.report-map').textContent.includes('物质的量浓度'));
