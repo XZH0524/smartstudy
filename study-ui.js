@@ -15,6 +15,7 @@
     coachHelp: ['查看这一步的提示', 'Get a hint for this step'],
     coachRule: ['查看规则与例题', 'See the rule and a worked example'],
     coachPrerequisites: ['先复习这些基础步骤', 'Review these prerequisite skills'],
+    coachTrace: ['记录提示先补这些步骤', 'Your answers suggest revisiting these steps first'],
     coachSuggestion: ['选项提示可能卡在「{skill}」。用两道新题进一步确认。', 'This choice may point to difficulty with “{skill}”. Check it on two new questions.'],
     coachAmbiguous: ['这道题的选项不足以判断错因。可以先看解析，再练同一知识点。', 'This answer does not pinpoint a cause. Read the explanation, then try the same topic again.'],
     coachJump: ['看分步辅导', 'Open guided practice'],
@@ -37,27 +38,36 @@
     targetedAlgebra: ['根据近期错题练「{skill}」', 'Practise “{skill}” from recent mistakes'],
     sameLevelBank: ['做同等级题库题（{level}）', 'Use the {level} question bank'],
     localAiBank: ['本地版可以直接练已验算的题库变式。', 'The local version can use verified variations from the question bank.'],
-    plan: ['学习计划', 'Study plan'], planSubtitle: ['按可用时间安排复习和练习。进度变化后，下一次打开时重新安排。', 'Fit review and practice into your available time. Tasks update when your progress changes.'],
-    planSettings: ['设置学习目标', 'Set a study goal'], planGoal: ['目标科目', 'Subject goal'], planBalanced: ['数学和英语', 'Mathematics and English'], planAll: ['全部学科', 'All subjects'],
+    plan: ['学习中心', 'Study centre'], planSubtitle: ['先做今天的小任务，再沿知识路线继续学。', 'Start with a short daily task, then follow a topic path.'],
+    planSettings: ['调整我的计划', 'Edit my plan'], planGoal: ['目标科目', 'Subject goal'], planBalanced: ['数学和英语', 'Mathematics and English'], planAll: ['全部学科', 'All subjects'],
     planTopic: ['重点知识点', 'Focus topic'], planMinutes: ['每日可用时间（分钟）', 'Daily time available (minutes)'],
     planDeadline: ['考试日期（可选）', 'Exam date (optional)'], planSave: ['保存学习计划', 'Save study plan'],
-    planSaved: ['学习计划已保存。', 'Study plan saved.'], planTask: ['今天要做什么', 'Today’s tasks'],
-    planStart: ['开始 {topic} · {n} 题', 'Start {topic} · {n} questions'], planPlacement: ['可选：先做 {subject} 起点测试', 'Optional: take the {subject} placement check'],
-    planBudget: ['每天 {minutes} 分钟。按当前作答速度估算，今天还可安排约 {n} 题。', '{minutes} minutes per day. At your current estimated pace, there is room for about {n} more questions today.'],
-    planBudgetDone: ['今天已达到计划上限，下次打开会按新的作答和复习记录调整。', 'You’ve reached today’s plan limit. The next plan will use your updated practice and review history.'],
+    planSaved: ['学习计划已保存。', 'Study plan saved.'], planTask: ['今日任务', 'Today’s task'],
+    planStart: ['练 {topic} · {n} 题', 'Practise {topic} · {n} questions'], planPlacement: ['做 {subject} 起点测试', 'Take the {subject} placement check'],
+    planDailyTime: ['计划用时 {minutes} 分钟', 'A {minutes}-minute plan'],
+    planProgress: ['今天已作答 {n} 题，目标 {target} 题', '{n} answers today, target {target}'],
+    planReview: ['复习 {topic} · {n} 题', 'Review {topic} · {n} questions'],
+    planBankReview: ['重做 {subject} 错题 · {n} 题', 'Retry {subject} mistakes · {n} questions'],
+    planComplete: ['今日任务完成', 'Daily goal complete'],
+    planBudgetDone: ['今天的计划用时已到', 'Today’s planned time is up'],
+    planMoreTasks: ['查看其余任务', 'See the other tasks'],
+    planOther: ['自由练习', 'Choose your practice'],
     planUpcoming: ['未来 7 天', 'Next 7 days'], planMonth: ['未来 30 天', 'Next 30 days'],
     planExamSoon: ['考前一周优先巩固已有知识，并缩短新练习。', 'In the week before the exam, prioritise review and keep new sets short.'],
-    planMoreDue: ['有 {n} 个到期专项。今天按优先顺序安排可完成的部分。', '{n} skills are due. Today’s plan schedules what fits the available time.'],
-    planNeedsVariants: ['{n} 个到期专项暂缺没做过的复测题。可先看辅导或练同一知识点。', '{n} due skills need fresh transfer questions. Open the guide or practise the topic in the meantime.'],
-    planForecast: ['预览会随新的作答、复习结果和目标调整。', 'This preview shifts with new answers, review results and goals.'],
+    planNeedsVariants: ['{n} 个专项暂缺新复测题，可先看辅导。', '{n} skills need fresh check questions. Guidance is available.'],
     planScheduled: ['已安排复习', 'Scheduled review'], planProposed: ['建议练习', 'Suggested practice'],
+    roadmap: ['知识路线', 'Topic paths'], roadmapIntro: ['从基础开始，也可以直接练任何一节。', 'Start with the basics or choose any topic.'],
+    roadmapPractised: ['练过 {n} 道不同题', '{n} distinct questions tried'],
+    roadmapVerified: ['{n} 个子技能通过复测', '{n} skills passed a check'],
+    roadmapGuide: ['学这节', 'Guide'],
     report: ['学习报告', 'Study report'], reportIntro: ['根据已提交的作答比较表现，并查看下一步可练的知识点。', 'Compare submitted answers and choose what to practise next.'],
-    reportToday: ['今天', 'Today'], reportWeek: ['近 7 天', 'Last 7 days'], reportMonth: ['近 30 天', 'Last 30 days'],
+    reportToday: ['今天', 'Today'], reportWeek: ['近 7 天', 'Last 7 days'], reportMonth: ['近 30 天', 'Last 30 days'], reportQuarter: ['近 90 天', 'Last 90 days'],
     reportFilters: ['报告时段', 'Report period'], reportTime: ['记录到的作答时间', 'Observed answering time'],
     reportTimeValue: ['{n} 分 {seconds} 秒', '{n} min {seconds} sec'], reportTimeCoverage: ['{timed}/{total} 次作答有计时', '{timed}/{total} answers have timing'],
     reportDelta: ['当前答对 {correct}/{total}；此前同长度时段答对 {previousCorrect}/{previousTotal}。', '{correct}/{total} correct this period; {previousCorrect}/{previousTotal} in the previous equal-length period.'],
     reportNoComparison: ['至少两个时段有作答后可比较。', 'Comparison is available once both periods have answers.'],
     reportActivity: ['每日作答量', 'Answers by day'], reportAccuracy: ['每日作答正确率', 'Accuracy by day'],
+    reportWeeklyActivity: ['每周作答量', 'Answers by week'], reportWeeklyAccuracy: ['每周作答正确率', 'Accuracy by week'],
     reportDate: ['日期', 'Date'], reportTable: ['查看图表数据', 'View chart data'],
     reportMap: ['知识点练习地图', 'Topic practice map'], reportEvidence: ['{n} 道不同题，{correct}/{total} 次答对', '{n} distinct questions, {correct}/{total} answers correct'],
     reportSparse: ['样本较少', 'Small sample'], reportSkillNote: ['正确率描述本时段做过的题目。每个知识点同时显示题数。', 'Accuracy describes answers from this period. Each topic also shows the sample size.'],
@@ -109,6 +119,7 @@
       }
       const skill = skills[focus];
       const record = profile[focus];
+      const trail = Coach.prerequisiteTrail(focus, profile);
       const modes = ['verified', 'scheduled'].includes(record.status) ? ['spaced', 'retake'] : record.status === 'confirmed' ? ['retake'] : ['probe', 'retake'];
       const ready = modes.filter(mode => (mode !== 'spaced' || !skill.domain || (record.due && record.due <= Core.localDate(new Date())))
         && Coach.focusIds(state, focus, mode, undefined, record).length);
@@ -120,7 +131,8 @@
             <details class="study-details"><summary>${t('coachHelp')}</summary><p>${text(skill.notice)}</p></details>
             <details class="study-details"><summary>${t('coachRule')}</summary><p>${text(skill.principle)}</p><p class="worked-example">${text(skill.example)}</p></details>
             ${skill.source ? `<p class="field-help"><a href="${escapeHtml(skill.source)}" target="_blank" rel="noopener noreferrer">${t('scienceSource')}</a></p>` : ''}
-            ${skill.prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><div class="study-actions">${skill.prerequisites.map(id => linkToCoach(id)).join('')}</div>` : ''}
+            ${trail.length ? `<h3>${t('coachTrace')}</h3><ol class="coach-trail">${trail.map(id => `<li>${linkToCoach(id)}</li>`).join('')}</ol>`
+              : skill.prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><div class="study-actions">${skill.prerequisites.map(id => linkToCoach(id)).join('')}</div>` : ''}
           </section>
           <section class="panel study-panel" aria-labelledby="skill-check-title">
             <h2 id="skill-check-title">${t(sectionStatus[record.status])}</h2>
@@ -147,58 +159,110 @@
         .map(([id, label]) => `<option value="${id}" ${id === value ? 'selected' : ''}>${label}</option>`).join('');
     }
 
-    function renderPlan(state, catalog) {
-      const settings = state.plan || { goal: 'all', topic: '', minutes: 15, deadline: '' };
-      const plan = Coach.learningPlan(state, catalog);
-      const topicLabel = id => topics[id]?.[language()] || '';
-      const reviews = list => list.map(({ focus }) => `<a href="${coachUrl(focus)}">${text(skills[focus].label)}</a>`).join(' · ');
-      return `${heading(t('plan'), t('planSubtitle'))}<div class="study-grid plan-layout">
-        <section class="panel study-panel plan-settings" aria-labelledby="plan-settings-title">
-          <h2 id="plan-settings-title">${t('planSettings')}</h2>
-          <form id="plan-form" class="plan-form">
-            ${selectField('plan-goal', t('planGoal'), [['all', t('planAll')], ['balanced', t('planBalanced')], ...subjects.filter(item => item.available).map(item => [item.id, subjectName(item.id)])], settings.goal)}
-            <label class="field"><span>${t('planTopic')}</span><select id="plan-topic">${planTopicOptions(settings.goal, settings.topic)}</select></label>
-            <label class="field"><span>${t('planMinutes')}</span><input id="plan-minutes" type="number" min="5" max="90" required value="${settings.minutes}"></label>
-            <label class="field"><span>${t('planDeadline')}</span><input id="plan-deadline" type="date" value="${escapeHtml(settings.deadline)}"></label>
-            <button class="button" type="submit">${t('planSave')}</button>
-          </form>
-        </section>
-        ${plan ? `<section class="panel study-panel today-plan" aria-labelledby="daily-plan-title">
-          <h2 id="daily-plan-title">${t('planTask')}</h2>
-          <p>${t(plan.slots ? 'planBudget' : 'planBudgetDone', { minutes: settings.minutes, n: plan.slots })}</p>
+    function renderToday(plan, active, compact = false) {
+      const tasks = plan.review.map(({ focus, mode, count }) => ({
+        label: t('planReview', { topic: skills[focus].label[language()], n: count }),
+        action: 'focus-practice', attrs: `data-focus="${focus}" data-mode="${mode}"`
+      }));
+      if (plan.bankReview) tasks.push({ label: t('planBankReview', {
+        subject: subjects.find(item => item.id === plan.bankReview.subject).label[language()], n: plan.bankReview.count
+      }), action: 'plan-review' });
+      if (plan.practice) tasks.push({ label: t('planStart', { topic: topics[plan.practice.topic][language()], n: plan.practice.count }),
+        action: 'plan-practice' });
+      if (active) tasks.unshift({ label: t('resume'), action: 'resume' });
+      const [first, ...extra] = tasks;
+      const renderTask = (task, style) => button(task.label, task.action, style, task.attrs);
+      const done = Math.min(plan.target, plan.completed);
+      const status = plan.completed >= plan.target ? 'planComplete' : 'planBudgetDone';
+      return `<section class="today-plan ${compact ? 'today-compact' : 'panel study-panel'}" aria-labelledby="daily-plan-title">
+        <div class="daily-top"><div><h2 id="daily-plan-title">${t('planTask')}</h2><p>${t('planDailyTime', plan.settings)}</p></div>
+          <strong class="daily-count" aria-hidden="true">${done}<span>/${plan.target}</span></strong></div>
+        <div class="daily-dots" role="progressbar" aria-label="${t('planTask')}" aria-valuemin="0" aria-valuemax="${plan.target}" aria-valuenow="${done}"
+          aria-valuetext="${t('planProgress', { n: plan.completed, target: plan.target })}">
+          ${Array.from({ length: plan.target }, (_, index) => `<span class="${index < done ? 'filled' : ''}" aria-hidden="true">${index < done ? '✓' : ''}</span>`).join('')}
+        </div>
+        ${first ? renderTask(first) : `<strong class="daily-done">${t(status)}</strong> <a class="button secondary" href="#practice">${t('planOther')}</a>`}
+        ${compact ? '' : `
+          ${extra.length ? `<details class="study-details"><summary>${t('planMoreTasks')}</summary><div class="study-actions">${extra.map(task => renderTask(task, 'secondary')).join('')}</div></details>` : ''}
+          ${plan.placement && plan.slots && !active ? `<div class="study-actions">${button(t('planPlacement', {
+            subject: subjects.find(item => item.id === plan.placement).label[language()]
+          }), 'diagnostic', 'secondary', `data-subject="${plan.placement}"`)}</div>` : ''}
           ${plan.deadlineSoon ? `<p class="field-help">${t('planExamSoon')}</p>` : ''}
-          ${plan.dueCount ? `<p class="field-help">${t('planMoreDue', { n: plan.dueCount })}</p>` : ''}
-          ${plan.unavailableReview.length ? `<p class="field-help">${t('planNeedsVariants', { n: plan.unavailableReview.length })}</p><p>${reviews(plan.unavailableReview.map(focus => ({ focus })))}</p>` : ''}
-          ${plan.review.length ? `<ul class="study-skill-list">${plan.review.map(item => `<li>
-            <strong>${text(skills[item.focus].label)}</strong><div class="study-actions">
-            ${linkToCoach(item.focus, t('coachJump'))}${button(t(item.mode), 'focus-practice', 'secondary', `data-focus="${item.focus}" data-mode="${item.mode}"`)}</div></li>`).join('')}</ul>` : ''}
-          ${plan.practice ? button(t('planStart', { topic: topicLabel(plan.practice.topic), n: plan.practice.count }), 'plan-practice') : ''}
-          ${plan.placement && plan.slots ? button(t('planPlacement', { subject: subjects.find(item => item.id === plan.placement).label[language()] }), 'diagnostic', 'secondary', `data-subject="${plan.placement}"`) : ''}
-        </section>` : ''}</div>
-        ${plan ? `<section class="panel study-panel plan-preview">
-          <p class="field-help">${t('planForecast')}</p>
+          ${plan.unavailableReview.length ? `<p class="field-help">${t('planNeedsVariants', { n: plan.unavailableReview.length })}</p>
+            <div class="study-actions">${plan.unavailableReview.slice(0, 3).map(id => linkToCoach(id)).join('')}</div>` : ''}
+        `}
+      </section>`;
+    }
+
+    function renderRoadmap(state, catalog, preferredSubject) {
+      const subject = Object.hasOwn(topicsBySubject, preferredSubject) ? preferredSubject : 'english';
+      const rows = Coach.roadmap(state, catalog, subject);
+      function branch(parent) {
+        return `<ul class="roadmap-branch">${rows.filter(row => row.parent === parent).map(row => {
+          const status = row.due ? 'due' : row.verified ? 'verified' : row.seen ? 'started' : 'new';
+          return `<li><div class="roadmap-node"><span class="roadmap-dot ${status}" aria-hidden="true"></span>
+            <div>${button(text(topics[row.id]), 'topic-practice', 'roadmap-topic', `data-subject="${subject}" data-topic="${row.id}"`)}
+              <span class="roadmap-status">${row.seen ? t('roadmapPractised', { n: row.seen }) : t('coachUntested')}
+                ${row.due ? ` · ${t('coachDueNow')}` : ''}
+                ${row.verified ? ` · ${t('roadmapVerified', { n: row.verified })}` : ''}</span>
+            </div>${row.guide ? linkToCoach(row.guide, t('roadmapGuide')) : ''}
+          </div>${rows.some(item => item.parent === row.id) ? branch(row.id) : ''}</li>`;
+        }).join('')}</ul>`;
+      }
+      return `<section class="panel study-panel roadmap" aria-labelledby="roadmap-title">
+        <h2 id="roadmap-title">${t('roadmap')}</h2><p>${t('roadmapIntro')}</p>
+        <div class="filters" role="group" aria-label="${t('subjects')}">${subjects.filter(item => item.available).map(item =>
+          `<button type="button" class="filter-button ${item.id === subject ? 'active' : ''}" aria-pressed="${item.id === subject}"
+            data-action="roadmap-subject" data-subject="${item.id}">${text(item.label)}</button>`).join('')}</div>
+        ${branch('')}
+      </section>`;
+    }
+
+    function renderPlan(state, catalog, preferredSubject) {
+      const plan = Coach.learningPlan(state, catalog);
+      const settings = plan.settings;
+      function reviews(list) {
+        const focuses = [...new Set(list.map(item => item.focus).filter(Boolean))];
+        const ids = [...new Set(list.map(item => item.topic).filter(Boolean))];
+        return [...focuses.map(id => linkToCoach(id)), ...ids.map(id => text(topics[id]))].join(' · ');
+      }
+      return `${heading(t('plan'), t('planSubtitle'))}
+        ${renderToday(plan, state.active)}
+        ${renderRoadmap(state, catalog, preferredSubject || settings.goal)}
+        <section class="panel study-panel plan-preview">
+          <details class="study-details plan-settings"><summary>${t('planSettings')}</summary>
+            <form id="plan-form" class="plan-form">
+              ${selectField('plan-goal', t('planGoal'), [['all', t('planAll')], ['balanced', t('planBalanced')], ...subjects.filter(item => item.available).map(item => [item.id, subjectName(item.id)])], settings.goal)}
+              <label class="field"><span>${t('planTopic')}</span><select id="plan-topic">${planTopicOptions(settings.goal, settings.topic)}</select></label>
+              <label class="field"><span>${t('planMinutes')}</span><input id="plan-minutes" type="number" min="5" max="90" required value="${settings.minutes}"></label>
+              <label class="field"><span>${t('planDeadline')}</span><input id="plan-deadline" type="date" value="${escapeHtml(settings.deadline)}"></label>
+              <button class="button" type="submit">${t('planSave')}</button>
+            </form>
+          </details>
           <details class="study-details"><summary>${t('planUpcoming')}</summary><ul class="study-skill-list">${plan.week.map(item => `<li><strong>${formatDate(item.date)}</strong>
             <span>${item.scheduled.length ? `${t('planScheduled')} · ${reviews(item.scheduled)}` : `${t('planProposed')} · ${text(topics[item.topic])}`}</span></li>`).join('')}</ul></details>
           <details class="study-details"><summary>${t('planMonth')}</summary><ul class="study-skill-list">${plan.weeks.map(item => `<li><strong>${formatDate(item.from)} – ${formatDate(item.to)}</strong>
             <span>${t('planProposed')} · ${text(topics[item.topic])}</span>${item.scheduled.length ? `<span>${t('planScheduled')} · ${reviews(item.scheduled)}</span>` : ''}</li>`).join('')}</ul></details>
-        </section>` : ''}`;
+          <a class="button secondary" href="#report">${t('report')}</a>
+        </section>`;
     }
 
-    function renderCharts(daily) {
+    function renderCharts(daily, weekly) {
+      const periodLabel = day => day.date === day.end ? formatDate(day.date) : `${formatDate(day.date)} – ${formatDate(day.end)}`;
       const max = Math.max(1, ...daily.map(day => day.total));
       const x = index => daily.length > 1 ? 49 + index * 531 / (daily.length - 1) : 300;
       const y = accuracy => 108 - accuracy * .9;
       const accuracy = daily.map((day, index) => day.accuracy === null ? '' : `
         ${index && daily[index - 1].accuracy !== null ? `<line x1="${x(index - 1)}" y1="${y(daily[index - 1].accuracy)}" x2="${x(index)}" y2="${y(day.accuracy)}"/>` : ''}
-        <circle cx="${x(index)}" cy="${y(day.accuracy)}" r="4"><title>${formatDate(day.date)} · ${day.accuracy}%</title></circle>`).join('');
-      const dates = `<div class="chart-dates" aria-hidden="true"><span>${formatDate(daily[0].date)}</span>${daily.length > 1 ? `<span>${formatDate(daily.at(-1).date)}</span>` : ''}</div>`;
+        <circle cx="${x(index)}" cy="${y(day.accuracy)}" r="4"><title>${periodLabel(day)} · ${day.accuracy}%</title></circle>`).join('');
+      const dates = `<div class="chart-dates" aria-hidden="true"><span>${formatDate(daily[0].date)}</span>${daily.length > 1 ? `<span>${formatDate(daily.at(-1).end)}</span>` : ''}</div>`;
       return `<section class="panel study-panel report-charts">
-        <figure><figcaption>${t('reportActivity')}</figcaption><div class="report-bars" aria-hidden="true">${daily.map(day => `<span title="${formatDate(day.date)} · ${day.total}" style="--bar-height:${day.total * 100 / max}%"></span>`).join('')}</div>${dates}</figure>
-        <figure><figcaption>${t('reportAccuracy')}</figcaption><svg class="report-line" viewBox="0 0 600 126" preserveAspectRatio="none" aria-hidden="true">
+        <figure><figcaption>${t(weekly ? 'reportWeeklyActivity' : 'reportActivity')}</figcaption><div class="report-bars" aria-hidden="true">${daily.map(day => `<span title="${periodLabel(day)} · ${day.total}" style="--bar-height:${day.total * 100 / max}%"></span>`).join('')}</div>${dates}</figure>
+        <figure><figcaption>${t(weekly ? 'reportWeeklyAccuracy' : 'reportAccuracy')}</figcaption><svg class="report-line" viewBox="0 0 600 126" preserveAspectRatio="none" aria-hidden="true">
           <path class="chart-grid" d="M49 18H580 M49 63H580 M49 108H580"/><text x="2" y="22">100%</text><text x="2" y="67">50%</text><text x="2" y="112">0%</text>${accuracy}</svg>${dates}</figure>
         <details class="study-details"><summary>${t('reportTable')}</summary><div class="report-table"><table>
           <thead><tr><th scope="col">${t('reportDate')}</th><th scope="col">${t('answered')}</th><th scope="col">${t('accuracy')}</th></tr></thead>
-          <tbody>${daily.map(day => `<tr><th scope="row">${formatDate(day.date)}</th><td>${day.total}</td><td>${day.accuracy === null ? '—' : day.accuracy + '%'}</td></tr>`).join('')}</tbody>
+          <tbody>${daily.map(day => `<tr><th scope="row">${periodLabel(day)}</th><td>${day.total}</td><td>${day.accuracy === null ? '—' : day.accuracy + '%'}</td></tr>`).join('')}</tbody>
         </table></div></details>
       </section>`;
     }
@@ -211,7 +275,7 @@
       const nextTopic = Object.entries(report.topics).filter(([, row]) => row.distinct >= 3).sort((a, b) => a[1].accuracy - b[1].accuracy)[0]?.[0];
       const summary = (label, value, note = '') => `<div><dt>${t(label)}</dt><dd>${value}</dd>${note ? `<dd class="field-help">${note}</dd>` : ''}</div>`;
       return `${heading(t('report'), t('reportIntro'))}
-        <div class="filters report-filters" role="group" aria-label="${t('reportFilters')}">${[[1, 'reportToday'], [7, 'reportWeek'], [30, 'reportMonth']].map(([n, key]) =>
+        <div class="filters report-filters" role="group" aria-label="${t('reportFilters')}">${[[1, 'reportToday'], [7, 'reportWeek'], [30, 'reportMonth'], [90, 'reportQuarter']].map(([n, key]) =>
           `<button type="button" class="filter-button ${days === n ? 'active' : ''}" aria-pressed="${days === n}" data-action="report-window" data-days="${n}">${t(key)}</button>`).join('')}</div>
         <section class="panel study-panel"><dl class="report-totals">
           ${summary('answered', recent.total)}
@@ -220,7 +284,7 @@
             recent.total ? t('reportTimeCoverage', recent) : '')}</dl>
           <p class="field-help">${recent.total && previous.total ? t('reportDelta', { ...recent, previousCorrect: previous.correct, previousTotal: previous.total }) : t('reportNoComparison')}</p>
         </section>
-        ${recent.total ? renderCharts(report.daily) : ''}
+        ${recent.total ? renderCharts(report.daily, days === 90) : ''}
         <section class="panel study-panel report-map"><h2>${t('reportMap')}</h2><p class="field-help">${t('reportSkillNote')}</p>
           <div class="study-grid">${Object.entries(topicsBySubject).map(([subject, ids]) => `<section><h3>${subjectName(subject)}</h3><ul class="study-skill-list">${ids.map(id => {
             const row = report.topics[id];
@@ -258,7 +322,7 @@
       </details>`;
     }
 
-    return { renderClue, renderCoach, renderFocusResult, renderPlan, renderReport, renderBackup, renderQuestionReport, planTopicOptions };
+    return { renderClue, renderCoach, renderFocusResult, renderToday, renderPlan, renderReport, renderBackup, renderQuestionReport, planTopicOptions };
   }
   globalThis.EachVeyaStudyUI = { copy, create };
 })();

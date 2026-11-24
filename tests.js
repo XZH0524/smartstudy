@@ -689,6 +689,79 @@
     equal(calculated.practice.topic, 'algebra');
   });
 
+  await test('无配置时即有八分钟计划；当天按真实答题数前进，不会改写学习设置', () => {
+    const now = new Date(2026, 3, 2, 11);
+    let state = Core.createState();
+    const initial = Coach.learningPlan(state, questions, now);
+    equal([initial.settings.minutes, initial.target, initial.completed, initial.practice.count], [8, 5, 0, 5]);
+    state = start({ ids: ['ma-a01'], count: 1 }, state);
+    state = answerCurrent(state, true, knownTime);
+    const partial = Coach.learningPlan(state, questions, now);
+    equal([partial.target, partial.completed, partial.slots], [5, 1, 4]);
+    equal(state.plan, null);
+    equal(Coach.learningPlan(state, questions, new Date(2026, 3, 3, 11)).completed, 0);
+  });
+
+  await test('普通错题从当天开始间隔复习，带提示和提前重做不会推进间隔', () => {
+    const item = questions.find(question => question.subject === 'math' && question.hint && !question.focusOnly
+      && !question.diagnosticOnly && !Object.keys(question.errors || {}).length);
+    let state = { ...Core.createState(), plan: Core.normalizePlan({ enabled: true, goal: 'math', topic: item.topic, minutes: 8 }) };
+    const date = offset => new Date(2026, 3, 2 + offset, 10);
+    const plan = offset => Coach.learningPlan(state, questions, date(offset));
+    const answer = (offset, correct, hint = false) => {
+      state = start({ subject: item.subject, ids: [item.id], count: 1, mode: 'review' }, state);
+      if (hint) state = Core.revealHint(state, questions);
+      state = Core.advanceSession(answerCurrent(state, correct, date(offset).toISOString()), questions, date(offset).toISOString());
+    };
+    answer(0, false);
+    equal(plan(0).bankReview.ids, [item.id]);
+    answer(0, true, true);
+    equal(plan(0).bankReview, null);
+    let day = 1;
+    for (const interval of [1, 3, 7, 14, 30]) {
+      equal(plan(day).bankReview.ids, [item.id]);
+      answer(day, true);
+      equal(plan(day).bankReview, null);
+      answer(day, true);
+      equal(plan(day + interval - 1).bankReview, null);
+      day += interval;
+    }
+    answer(day, true, true);
+    equal(plan(day).bankReview, null);
+    day++;
+    equal(plan(day).bankReview.ids, [item.id]);
+    answer(day, false);
+    equal(plan(day).bankReview.ids, [item.id]);
+    const words = answerCurrent(start({ subject: 'english', ids: ['en-v01'], count: 1 }), false, knownTime);
+    equal(Coach.learningPlan(words, questions, date(0)).bankReview.ids, ['en-v01']);
+  });
+
+  await test('知识路线只使用实际题目证据；前置知识追溯只显示已观察到的错因', () => {
+    const now = new Date(2026, 3, 2, 11);
+    const fresh = Coach.roadmap(Core.createState(), questions, 'chemistry', now);
+    equal(fresh.find(row => row.id === 'amount-concentration').parent, 'mole-calculations');
+    assert(fresh.every(row => !row.seen && !row.verified && !row.due));
+    const wrong = answerCurrent(start({ ids: ['ma-a01'], count: 1 }), false, knownTime);
+    const algebra = Coach.roadmap(wrong, questions, 'math', now).find(row => row.id === 'algebra');
+    equal([algebra.parent, algebra.seen, algebra.verified], ['arithmetic', 1, 0]);
+    equal(Coach.prerequisiteTrail('distribution', { coefficient: { status: 'possible' }, balance: { status: 'unassessed' } }), ['coefficient']);
+    equal(Coach.prerequisiteTrail('distribution', { coefficient: { status: 'verified' }, balance: { status: 'scheduled' } }), []);
+  });
+
+  await test('九十天报告按周合并，空周无正确率，并比较前一个等长时段', () => {
+    const today = new Date(2026, 6, 30, 12);
+    let state = Core.createState();
+    for (const [offset, correct] of [[-90, true], [-89, false], [0, true]]) {
+      const at = new Date(2026, 6, 30 + offset, 10).toISOString();
+      state = Core.advanceSession(answerCurrent(start({ ids: ['ma-a01'], count: 1 }, state), correct, at), questions, at);
+    }
+    const report = Coach.report(state, questions, 90, today);
+    equal([report.recent.total, report.recent.correct, report.previous.total, report.daily.length], [2, 1, 1, 13]);
+    equal(report.daily.reduce((sum, period) => sum + period.total, 0), 2);
+    equal(report.daily[1].accuracy, null);
+    equal(report.daily.at(-1).end, Core.localDate(today));
+  });
+
   await test('备份兼容 v3，合并排序并保持幂等，冲突时保留两份原始作答', () => {
     const old = Core.startAiSession(Core.createState(), questions, 'L2', aiFixture);
     const oldCatalog = Core.questionsForState(questions, old);
@@ -1163,6 +1236,7 @@
     assert(element('.report-map').textContent.includes('尚未测评'));
     assert(!document.querySelector('.report-charts'));
     await go('plan', '#plan-form');
+    element('.plan-settings').open = true;
     change('plan-goal', 'english');
     change('plan-topic', 'grammar');
     element('#plan-minutes').value = '8';
@@ -1178,12 +1252,37 @@
     assert(element('.report-totals').textContent.includes('100%'));
     click('[data-days="30"]');
     equal(document.querySelectorAll('.report-table tbody tr').length, 30);
+    click('[data-days="90"]');
+    equal(document.querySelectorAll('.report-table tbody tr').length, 13);
     change('language', 'en');
     assert(element('.report-map').textContent.includes('Topic practice map'));
     fitsViewport();
     await go('records', '.backup-panel');
     assert(element('[data-action="backup-export"]'));
     assert(element('#backup-file'));
+    await resetUi();
+  });
+
+  await test('首页可直接做每日任务，进度点随作答更新，五科路线可打开对应知识点', async () => {
+    await resetUi();
+    equal(element('.hero .daily-dots').getAttribute('aria-valuenow'), '0');
+    assert(element('#sound-toggle').getAttribute('aria-label').includes('音效'));
+    click('.hero [data-action="plan-practice"]');
+    await waitElement('#question-title');
+    await answerUi(true);
+    click('[data-action="home"]');
+    await waitElement('.hero .daily-dots .filled');
+    equal(element('.hero .daily-dots').getAttribute('aria-valuenow'), '1');
+    await go('plan', '.roadmap');
+    equal(document.querySelectorAll('[data-action="roadmap-subject"]').length, 5);
+    click('[data-action="roadmap-subject"][data-subject="biology"]');
+    assert(element('[data-subject="biology"][data-action="roadmap-subject"]').getAttribute('aria-pressed') === 'true');
+    assert(element('.roadmap').textContent.includes('尚未测评'));
+    assert(element('.roadmap [data-topic="natural-selection"]').closest('.roadmap-branch').parentElement.querySelector('[data-topic="trait-frequency"]'));
+    fitsViewport();
+    click('.roadmap [data-topic="natural-selection"]');
+    await waitElement('#practice-form');
+    equal(element('#topic').value, 'natural-selection');
     await resetUi();
   });
 

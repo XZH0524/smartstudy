@@ -7,9 +7,11 @@
   const Coach = globalThis.EachVeyaCoach;
   const focusSkills = globalThis.EachVeyaSkills?.skills;
   const StudyUI = globalThis.EachVeyaStudyUI;
+  const Sound = globalThis.EachVeyaSound;
   const Backup = globalThis.EachVeyaBackup;
   const data = globalThis.SmartStudyData;
   const main = document.getElementById('main');
+  const soundButton = document.getElementById('sound-toggle');
 
   // Reading history with an incomplete bank can drop otherwise valid answers.
   const practiceCounts = new Map();
@@ -48,6 +50,9 @@
   const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     ...StudyUI.copy,
+    answerSound: ['作答音效', 'Answer sounds'],
+    answerSoundOn: ['音效已开启', 'Answer sounds on'],
+    answerSoundOff: ['音效已关闭', 'Answer sounds off'],
     home: ['学习主页', 'Overview'], practice: ['开始练习', 'Practice'], mistakes: ['错题复习', 'Mistakes'], records: ['学习记录', 'Progress'],
     skip: ['跳至主要内容', 'Skip to main content'], navigation: ['主导航', 'Main navigation'], language: ['界面语言', 'Interface language'],
     brand: [`${brandName} 学验共途`, brandName],
@@ -161,6 +166,7 @@
   let aiNotice = '';
   let aiFailedLevel = '';
   let reportDays = 7;
+  let roadmapSubject = '';
   let backupStatus = null;
   let questionClock = null;
 
@@ -238,6 +244,7 @@
     document.querySelector('meta[name="description"]').content = t('metaDescription');
     document.getElementById('language').value = state.language;
     document.getElementById('language-label').innerHTML = t('language');
+    renderSoundToggle();
     document.getElementById('skip-link').innerHTML = t('skip');
     const navigation = document.getElementById('navigation');
     navigation.setAttribute('aria-label', t('navigation'));
@@ -256,7 +263,7 @@
     if (page === 'result') main.innerHTML = renderResult();
     if (page === 'records') main.innerHTML = renderRecords();
     if (page === 'coach') main.innerHTML = study.renderCoach(state, questions, location.hash.split('/')[1]);
-    if (page === 'plan') main.innerHTML = study.renderPlan(state, questions);
+    if (page === 'plan') main.innerHTML = study.renderPlan(state, questions, roadmapSubject);
     if (page === 'report') main.innerHTML = study.renderReport(state, questions, reportDays);
     for (const select of main.querySelectorAll('select[data-value]')) select.value = select.dataset.value;
     syncQuestionClock();
@@ -284,13 +291,22 @@
     return ms >= 20 && ms <= 600_000 ? ms : undefined;
   }
 
+  function renderSoundToggle() {
+    soundButton.hidden = !Sound;
+    if (!Sound) return;
+    soundButton.setAttribute('aria-label', t('answerSound'));
+    soundButton.setAttribute('aria-pressed', String(Sound.enabled()));
+    soundButton.title = t(Sound.enabled() ? 'answerSoundOn' : 'answerSoundOff');
+  }
+
   function renderHome() {
     const stats = Core.getStats(state, questions);
     const statCard = (label, value, unit, icon) => `<div class="stat"><div><p class="stat-label">${t(label)}</p><div class="stat-value">${value}${unit ? `<span class="stat-unit">${unit}</span>` : ''}</div></div><span class="stat-icon" aria-hidden="true">${icon}</span></div>`;
     const days = Core.dailyStats(state);
     const max = Math.max(5, ...days.map(day => day.total));
     return `${heading(t('brand'), t('welcomeSub'))}
-      <section class="hero"><div class="hero-copy"><h2>${t('heroTitle')}</h2><p>${t('heroText')}</p>${button(t(state.active ? 'resume' : 'start'), 'resume')}</div><div class="hero-art" aria-hidden="true"><div class="orbit"></div><div class="paper"><div class="paper-line"></div><div class="paper-line short"></div><div class="paper-sum">a² + b²</div><div class="paper-line"></div></div><span class="art-star">✧</span><div class="art-tile">Aa</div></div></section>
+      <section class="hero"><div class="hero-copy"><h2>${t('heroTitle')}</h2><p>${t('heroText')}</p><a class="button secondary" href="#plan">${t('roadmap')}</a></div>
+        ${study.renderToday(Coach.learningPlan(state, questions), state.active, true)}</section>
       <section class="stats-grid" aria-label="${t('workspace')}">${statCard('answered', stats.total, t('questionsUnit'), '▤')}${statCard('accuracy', stats.accuracy === null ? '—' : `${stats.accuracy}%`, stats.accuracy === null ? t('noData') : '', '◎')}${statCard('pending', stats.mistakes, t('questionsUnit'), '▧')}</section>
       <section><div class="section-heading"><h2>${t('subjects')}</h2><span class="section-note">${t('available', { n: subjects.filter(subject => subject.available).length })}</span></div><div class="subject-grid">${subjects.filter(subject => subject.available).map(subject => {
         const stats = Core.getStats(state, questions, subject.id);
@@ -298,7 +314,7 @@
         return `<article class="subject-card ${subject.id}"><div class="subject-top"><span class="subject-symbol" aria-hidden="true">${subject.symbol}</span><span class="subject-meta">${t('questionBank', { n: total })}</span></div><h3>${text(subject.label)}</h3><p class="subject-description">${text(subject.description)}</p><div class="subject-footer"><span class="subject-coverage">${t('coverage', { n: stats.total })}</span>${button(t('start'), 'subject', 'secondary', `data-subject="${subject.id}"`)}</div></article>`;
       }).join('')}</div></section>
       <div class="lower-grid"><section class="panel"><div class="section-heading"><h2>${t('activity')}</h2><span class="section-note">${t('lastWeek')}</span></div><div class="week-chart">${days.map((day, index) => `<div class="chart-column ${index === 6 ? 'today' : ''}" aria-label="${escapeHtml(day.date.toLocaleDateString(locale()))} ${t('questionCount', { n: day.total })}"><span class="bar-number">${day.total}</span><span class="bar-space"><span class="bar" style="height:${Math.max(3, day.total / max * 100)}%"></span></span><span>${index === 6 ? t('today') : escapeHtml(day.date.toLocaleDateString(locale(), { weekday: 'short' }))}</span></div>`).join('')}</div></section>
-      <section class="panel study-panel"><h2>${t('plan')}</h2><p>${t('planSubtitle')}</p><a class="button secondary" href="#plan">${t('plan')}</a></section></div>
+      <section class="panel study-panel"><h2>${t('report')}</h2><p>${t('reportIntro')}</p><a class="button secondary" href="#report">${t('report')}</a></section></div>
       <div class="reset-area"><button class="text-button" data-action="clear">${t('clearData')}</button></div>`;
   }
 
@@ -817,6 +833,12 @@
     main.focus();
     main.scrollIntoView();
   });
+  soundButton.addEventListener('click', () => {
+    if (!Sound) return;
+    Sound.setEnabled(!Sound.enabled());
+    renderSoundToggle();
+    announce(t(Sound.enabled() ? 'answerSoundOn' : 'answerSoundOff'));
+  });
   document.getElementById('language').addEventListener('change', event => {
     const language = event.target.value;
     commit(current => ({ ...current, language }));
@@ -853,7 +875,7 @@
       commit(current => ({ ...current, plan }));
       render();
       announce(t('planSaved'));
-      document.querySelector('#plan-form button[type="submit"]')?.focus();
+      main.querySelector('.today-plan button, .today-plan a')?.focus();
       return;
     }
     if (event.target.id === 'backup-form') {
@@ -882,10 +904,14 @@
         const sessionId = state.active?.id;
         const questionId = state.active?.questionIds[state.active.index];
         const duration = observedDuration();
+        let answer;
         commit(current => {
           if (current.active?.id !== sessionId || current.active?.questionIds[current.active.index] !== questionId) return current;
-          return Core.gradeAnswer(current, questions, selected, new Date().toISOString(), duration);
+          const updated = Core.gradeAnswer(current, questions, selected, new Date().toISOString(), duration);
+          if (updated !== current && !Core.hasDelayedFeedback(current.active.mode)) answer = updated.attempts.at(-1).correct;
+          return updated;
         });
+        if (!testing && typeof answer === 'boolean') Sound?.play(answer);
         render();
         document.getElementById('feedback-title')?.focus();
       }
@@ -914,11 +940,18 @@
       }
       if (action === 'home') go('home');
       if (action === 'records') go('records');
-      if (action === 'plan-practice') {
+      if (action === 'plan-practice' || action === 'plan-review') {
         const plan = Coach.learningPlan(state, questions);
-        if (plan?.practice) await begin(plan.practice);
+        const task = action === 'plan-review' ? plan.bankReview : plan.practice;
+        if (task) await begin(task);
+        else render();
       }
-      if (action === 'report-window' && [1, 7, 30].includes(Number(target.dataset.days))) {
+      if (action === 'roadmap-subject' && Object.hasOwn(topicsBySubject, target.dataset.subject)) {
+        roadmapSubject = target.dataset.subject;
+        render();
+        main.querySelector(`[data-action="roadmap-subject"][data-subject="${roadmapSubject}"]`)?.focus();
+      }
+      if (action === 'report-window' && Coach.reportWindows.includes(Number(target.dataset.days))) {
         reportDays = Number(target.dataset.days);
         render();
         main.querySelector(`[data-days="${reportDays}"]`)?.focus();
@@ -1029,7 +1062,7 @@
   render();
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.6';
+    script.src = 'tests.js?v=2.7';
     document.body.appendChild(script);
   }
 })();
