@@ -8,18 +8,20 @@
   const ENGLISH_PLACEMENT_LEVELS = levels.english.slice(0, 4);
 
   function diagnosticIds(subject) {
-    const items = questions.filter(question => question.subject === subject && question.diagnosticOnly);
+    const items = questions.filter(question => question.subject === subject && question.diagnosticOnly && !question.retired);
     return [...items].sort((a, b) => levels[subject].indexOf(a.level) - levels[subject].indexOf(b.level)
       || topicsBySubject[subject].indexOf(a.topic) - topicsBySubject[subject].indexOf(b.topic)).map(question => question.id);
   }
 
   function placementResult(state, session) {
     if (!session || session.mode !== 'diagnostic') return null;
-    const ids = diagnosticIds(session.subject);
-    if (!ids.length || ids.length !== session.questionIds.length || ids.some(id => !session.questionIds.includes(id))) return null;
+    const expected = diagnosticIds(session.subject).map(id => byId.get(id).originalId || id);
+    const actual = new Set(session.questionIds.map(id => byId.get(id)?.originalId || id));
+    if (!expected.length || expected.length !== session.questionIds.length || expected.some(id => !actual.has(id))) return null;
     const answers = new Map(state.attempts.filter(attempt => attempt.sessionId === session.id).map(attempt => [attempt.questionId, attempt]));
-    if (ids.some(id => !answers.has(id))) return null;
-    const items = ids.map(id => ({ ...byId.get(id), correct: answers.get(id).correct }));
+    if (session.questionIds.some(id => !answers.has(id))) return null;
+    const items = session.questionIds.map(id => ({ ...byId.get(id), correct: answers.get(id).correct }));
+    items.sort((a, b) => levels[session.subject].indexOf(a.level) - levels[session.subject].indexOf(b.level));
     const completedAt = session.completedAt;
     if (session.subject === 'math' || Science.subjects.includes(session.subject)) {
       const topics = {};
@@ -71,7 +73,7 @@
     const reviewed = new Map(state.sessions.filter(session => session.mode === 'spaced').map(session => [session.id, session]));
     for (const attempt of state.attempts) {
       const question = byId.get(attempt.questionId);
-      if (question?.subject !== subject || attempt.hinted === null || question.diagnosticOnly) continue;
+      if (question?.subject !== subject || attempt.hinted === null || question.diagnosticOnly || question.retired) continue;
       const row = rows[question.topic];
       if (Date.parse(attempt.at) < row.cutoff || question.level !== row.level || row.seen.has(question.id)) continue;
       if (['practice', 'science-ai'].includes(attempt.mode) && question.role === 'practice') {
@@ -121,7 +123,7 @@
     for (const attempt of state.attempts) {
       const question = byId.get(attempt.questionId);
       if (question?.subject !== subject || attempt.mode !== 'practice' || typeof attempt.hinted !== 'boolean'
-        || question.diagnosticOnly || Date.parse(attempt.at) < cutoff) continue;
+        || question.diagnosticOnly || question.retired || Date.parse(attempt.at) < cutoff) continue;
       const profile = adjustments[question.topic];
       if (question.level !== profile.level || profile.seen.has(question.id)) continue;
 
@@ -151,7 +153,7 @@
     const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 13);
     const counts = new Map();
     for (const { question, attempt } of Core.getMistakes(state, questions)) {
-      if (question.subject === 'english' && Date.parse(attempt.at) >= cutoff && Date.parse(attempt.at) <= now.getTime()) {
+      if (question.subject === 'english' && !question.retired && Date.parse(attempt.at) >= cutoff && Date.parse(attempt.at) <= now.getTime()) {
         counts.set(question.topic, (counts.get(question.topic) || 0) + 1);
       }
     }
@@ -161,7 +163,7 @@
 
   function practicePool(state, { subject, topic, level, curriculum = '' }) {
     const profiles = level === 'auto' && topicsBySubject[subject] ? subjectProfile(state, subject) : null;
-    return questions.filter(question => question.subject === subject && !question.diagnosticOnly && !question.focusOnly
+    return questions.filter(question => question.subject === subject && !question.retired && !question.diagnosticOnly && !question.focusOnly
       && (!curriculum || question.curriculumRefs?.some(ref => ref.curriculum === curriculum))
       && (!topic || question.topic === topic) && question.level === (profiles ? profiles[question.topic].level : level));
   }

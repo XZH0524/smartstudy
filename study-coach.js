@@ -43,7 +43,7 @@
       const day = dayAt(date);
       if (attempt) {
         const question = byId.get(attempt.questionId);
-        if (!question || question.purpose === 'followup') continue;
+        if (!question || question.retired || question.purpose === 'followup') continue;
         const fresh = !firstAttempts.has(question.id);
         firstAttempts.add(question.id);
         const marks = attempt.focus ? [attempt.focus] : question.focus || [];
@@ -132,7 +132,7 @@
     if (!Object.hasOwn(skills, focus) || !Core.focusModes.includes(mode)) return [];
     const used = new Set(state.attempts.map(attempt => attempt.questionId));
     if (mode === 'spaced' && record?.lessonLevel) {
-      const reserved = questions.filter(q => q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus) && !used.has(q.id));
+      const reserved = questions.filter(q => !q.retired && q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus) && !used.has(q.id));
       if (reserved.length >= count) return reserved.slice(0, count).map(q => q.id);
       if (!Science.topics[focus]) return [];
     }
@@ -140,8 +140,8 @@
       const topic = Science.topics[focus];
       const level = record?.level || record?.lessonLevel || Learning.subjectProfile(state, topic.subject)[focus].level;
       const role = mode === 'probe' ? 'probe' : 'transfer';
-      const pool = topic.denominator ? Science.questions : Science.focusQuestions || [];
-      const options = pool.filter(question => question.topic === focus && question.level === level && question.role === role && !used.has(question.id));
+      const options = questions.filter(question => !question.retired && question.topic === focus && question.level === level
+        && question.role === role && !used.has(question.id));
       const error = record?.error;
       const related = error && role === 'probe' ? options.filter(question => Object.values(question.errorKinds).includes(error)) : [];
       const selected = (related.length >= count ? related : options).slice(0, count);
@@ -150,13 +150,13 @@
     if (mode === 'retake' && record?.lessonLevel) {
       const chosen = [];
       for (const q of questions) {
-        if (q.purpose !== 'lesson' || q.level !== record.lessonLevel || !q.focus.includes(focus) || used.has(q.id)) continue;
+        if (q.retired || q.purpose !== 'lesson' || q.level !== record.lessonLevel || !q.focus.includes(focus) || used.has(q.id)) continue;
         if (!chosen.some(other => other.lessonGroup === q.lessonGroup)) chosen.push(q);
         if (chosen.length === count) return chosen.map(item => item.id);
       }
       return [];
     }
-    const options = questions.filter(question => question.variant && question.focus.includes(focus) && !used.has(question.id));
+    const options = questions.filter(question => !question.retired && question.variant && question.focus.includes(focus) && !used.has(question.id));
     const selected = [];
     if (mode === 'probe') {
       const step = options.find(question => question.variant === 'step');
@@ -190,7 +190,7 @@
       const date = new Date(time);
       const fresh = !used.has(attempt.questionId);
       used.add(attempt.questionId);
-      if (question?.purpose === 'lesson' && !attempt.correct) {
+      if (question?.purpose === 'lesson' && !question.retired && !attempt.correct) {
         const focus = mistakeFocus(question, attempt);
         if (focus) schedule(focus, question, date);
       } else if (check && fresh) {
@@ -222,7 +222,7 @@
     if (activeQuestion?.purpose === 'followup') used.add(activeQuestion.id);
     return [...pending.values()].sort((a, b) => a.due.localeCompare(b.due)).map(({ focus, due, source }) => {
       const resume = activeQuestion?.purpose === 'followup' && active.focus === focus;
-      const candidates = catalog.filter(q => q.purpose === 'followup' && q.level === source.level
+      const candidates = catalog.filter(q => !q.retired && q.purpose === 'followup' && q.level === source.level
         && q.subject === source.subject && q.focus.includes(focus) && q.lessonGroup !== source.lessonGroup && !used.has(q.id));
       const preferred = candidates.find(q => source.stepMethod ? q.stepMethod === source.stepMethod
         : source.evidenceType ? q.evidenceType === source.evidenceType
@@ -252,7 +252,7 @@
     const reviews = new Map();
     for (const attempt of [...attempts].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))) {
       const question = byId.get(attempt.questionId);
-      if (!question || question.diagnosticOnly || question.focusOnly || Core.hasDelayedFeedback(attempt.mode)) continue;
+      if (!question || question.retired || question.diagnosticOnly || question.focusOnly || Core.hasDelayedFeedback(attempt.mode)) continue;
       const date = new Date(attempt.at);
       const day = dayAt(date);
       const previous = reviews.get(question.id);

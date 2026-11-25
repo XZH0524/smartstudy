@@ -217,7 +217,7 @@
   function roundIds(state, subject) {
     const last = new Map();
     state.attempts.forEach((attempt, index) => last.set(attempt.questionId, index));
-    const ranked = items.filter(q => q.subject === subject && q.purpose === 'lesson')
+    const ranked = questions.filter(q => !q.retired && q.subject === subject && q.purpose === 'lesson')
       .sort((a,b) => (last.get(a.id) ?? -1) - (last.get(b.id) ?? -1));
     const groups = new Set();
     return ranked.filter(q => {

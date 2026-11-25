@@ -195,7 +195,7 @@
   });
 
   await test('每科各有 400 道免费题，新增科学知识点用未见的跨日复测升级', () => {
-    for (const subject of subjects) equal(questions.filter(item => item.subject === subject.id && !item.focusOnly && !item.diagnosticOnly).length, 400);
+    for (const subject of subjects) equal(questions.filter(item => item.subject === subject.id && !item.retired && !item.focusOnly && !item.diagnosticOnly).length, 400);
     const topic = 'forces-motion';
     const pool = Learning.practicePool(Core.createState(), { subject: 'physics', topic, level: 'L1' });
     equal(pool.length, 8);
@@ -570,6 +570,37 @@
     equal(Core.getMistakes(state, questions)[0].question.id, 'en-g01');
     equal(Learning.mathProfile(state).algebra.evidence, 0);
   });
+
+  await test('修订题重排选项时，v8 备份、原分数和未完练习沿用原题版本', () => {
+    const previous = byId.get('en-v08');
+    const revised = byId.get('en-v08@2');
+    assert(previous.retired && revised.originalId === previous.id && revised.version === 2);
+    equal(Core.evaluateAnswer(previous, 0).correct, true);
+    equal(Core.evaluateAnswer(revised, 0).correct, false);
+    equal(Core.evaluateAnswer(revised, 1).correct, true);
+    const activeCatalog = questions.filter(question => question.id !== previous.id);
+    const { retired, ...oldQuestion } = previous;
+    const oldCatalog = [...activeCatalog, oldQuestion];
+    let state = Core.startSession(Core.createState(), oldCatalog, { subject: 'english', ids: [previous.id], count: 1 });
+    state = Core.gradeAnswer(state, oldCatalog, 0, knownTime);
+    state = Core.advanceSession(state, oldCatalog, knownTime);
+    const legacy = Core.startSession(state, oldCatalog, { subject: 'english', ids: [previous.id], count: 1 });
+    const imported = Backup.parse(Backup.serialize(legacy), questions);
+    equal(imported, Core.normalizeState(legacy, oldCatalog));
+    equal(Backup.merge(imported, imported, questions), imported);
+    const resumed = Core.gradeAnswer(imported, questions, 0, laterTime);
+    equal(Core.advanceSession(resumed, questions, laterTime).sessions.map(session => session.correct), [1, 1]);
+    const next = Learning.practiceIds(imported, { subject: 'english', topic: 'vocabulary', level: revised.level });
+    assert(next.includes(revised.id) && !next.includes(previous.id));
+    equal(Core.chooseQuestions(questions, { subject: 'english', ids: [previous.id, revised.id] }), [revised.id]);
+    equal(Coach.learningPlan({ ...resumed, active: null }, questions, new Date(laterTime)).bankReview, null);
+    const values = new Map([[key, JSON.stringify(state)]]);
+    const storage = { getItem: name => values.get(name) ?? null };
+    throws(() => Core.readState(storage, key, [], activeCatalog));
+    throws(() => Backup.parse(Backup.serialize(legacy), activeCatalog));
+    equal(JSON.parse(values.get(key)), state);
+  });
+
 
   await test('新版可读 v4 与更早资料，旧版备份保持完整', () => {
     const legacyJson = JSON.stringify(oldRecord());
@@ -1510,6 +1541,32 @@
     const higher = { ...AI.sampleBatch('L3')[1], format:'calculation' };
     const grouped = globalThis.EachVeyaSkills.decorateEquation(AI.makeQuestion(higher), higher);
     equal(Coach.mistakeFocus(grouped, Core.evaluateAnswer(grouped, ['88','99'])), '');
+  });
+
+  await test('旧版英语错题可以在学习记录和错题本查看，归档题不会重新分配', async () => {
+    await resetUi();
+    const q = byId.get('en-v08');
+    const { retired, ...original } = q;
+    const historical = [...questions.filter(item => item.id !== q.id), original];
+    let state = Core.startSession(Core.createState(), historical, { subject: 'english', ids: [q.id], count: 1 });
+    state = Core.gradeAnswer(state, historical, 1, knownTime);
+    state = Core.advanceSession(state, historical, knownTime);
+    Core.saveState(localStorage, key, state);
+    replayStorage(key);
+    await go('records', '#archived-answers');
+    const archive = element('#archived-answers');
+    assert(archive.textContent.includes('before the lesson began'));
+    assert(archive.textContent.includes('B · at') && archive.textContent.includes('A · in'));
+    assert(archive.textContent.includes('按原题评分'));
+    await go('mistakes', '.mistake-card');
+    assert(element('.mistake-card').textContent.includes('按原题评分'));
+    assert(!document.querySelector('[data-action="review"], [data-action="review-one"]'));
+    await go('result', '.result-score');
+    assert(element('.result-score').textContent.includes('0%'));
+    assert(!document.querySelector('[data-action="review-result"]'));
+    equal(read().attempts[0].choice, 1);
+    fitsViewport();
+    await resetUi();
   });
 
   await test('学习中心可做双语专项，阅读证据在提交后出现，旧记录可带入专项复测', async () => {

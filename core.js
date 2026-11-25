@@ -172,7 +172,20 @@
   function readState(storage, key, legacyKeys, questions) {
     for (const name of [key, ...[].concat(legacyKeys)]) {
       const saved = storage.getItem(name);
-      if (saved !== null) return normalizeState(JSON.parse(saved), questions);
+      if (saved !== null) {
+        const raw = JSON.parse(saved);
+        const restored = normalizeState(raw, questions);
+        const known = new Set(questionsForState(questions, restored).map(question => question.id));
+        const answered = raw.attempts.filter(entry => typeof entry?.questionId === 'string' && entry.questionId
+          && typeof entry.sessionId === 'string' && entry.sessionId && dateIsValid(entry.at)).map(entry => entry.questionId);
+        const active = Array.isArray(raw.active?.questionIds) ? raw.active.questionIds : [];
+        if ([...answered, ...active].some(id => typeof id === 'string' && id && !known.has(id))) {
+          const error = new Error('Saved history references an unavailable question');
+          error.name = 'IncompleteStudyCatalog';
+          throw error;
+        }
+        return restored;
+      }
     }
     return createState();
   }
@@ -227,11 +240,12 @@
 
   function chooseQuestions(questions, { subject, topic, level, count = 8, ids }, random = Math.random) {
     if (!Number.isInteger(count) || count < 1) throw new Error('Invalid question count');
+    const available = questions.filter(question => question.subject === subject && !question.retired);
     if (ids) {
-      const subjectIds = new Set(questions.filter(question => question.subject === subject).map(question => question.id));
+      const subjectIds = new Set(available.map(question => question.id));
       return unique(ids).filter(id => subjectIds.has(id)).slice(0, count);
     }
-    const pool = questions.filter(question => question.subject === subject && !question.diagnosticOnly && !question.focusOnly
+    const pool = available.filter(question => !question.diagnosticOnly && !question.focusOnly
       && (!level || level === question.level) && (!topic || topic === question.topic));
     return shuffled(pool, random).slice(0, count).map(question => question.id);
   }

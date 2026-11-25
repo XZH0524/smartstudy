@@ -6,6 +6,7 @@
   const Science = globalThis.EachVeyaScience;
   const Coach = globalThis.EachVeyaCoach;
   const Lessons = globalThis.EachVeyaLessons;
+  const QuestionVersions = globalThis.EachVeyaQuestionVersions;
   const focusSkills = globalThis.EachVeyaSkills?.skills;
   const StudyUI = globalThis.EachVeyaStudyUI;
   const Sound = globalThis.EachVeyaSound;
@@ -18,16 +19,16 @@
   // Reading history with an incomplete bank can drop otherwise valid answers.
   const practiceCounts = new Map();
   for (const question of data?.questions || []) {
-    if (!question.diagnosticOnly && !question.focusOnly) {
+    if (!question.retired && !question.diagnosticOnly && !question.focusOnly) {
       practiceCounts.set(question.subject, (practiceCounts.get(question.subject) || 0) + 1);
     }
   }
   const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
     !available || practiceCounts.get(id) >= 400);
-  const workshopSubjects = new Set(data?.questions?.filter(question => question.purpose === 'followup').map(question => question.subject));
+  const workshopSubjects = new Set(data?.questions?.filter(question => !question.retired && question.purpose === 'followup').map(question => question.subject));
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
-  if (!completeBank || !completeWorkshops
+  if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 1
     || Core?.VERSION !== 8 || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
@@ -145,6 +146,9 @@
     replaceTitle: ['开始一组新练习？', 'Start a new practice?'], replaceText: ['当前练习将结束。已经提交的答案仍计入学习记录。', 'The current practice will end. Submitted answers remain in your study history.'],
     continue: ['开始新练习', 'Start new practice'], storageUnavailable: ['浏览器无法保存记录。你仍可练习，但关闭或刷新页面后，本次记录可能丢失。请在普通浏览模式下打开。', 'This browser cannot save your progress. You can practise, but this session may be lost after closing or refreshing. Try a normal browsing window.'],
     storageDamaged: ['学习记录无法读取。浏览器里的原记录已保留，本次作答暂时无法保存。', 'Saved study data could not be read. The existing record is kept, and answers in this session cannot be saved.'],
+    storageIncompleteCatalog: ['部分旧题暂未加载。原学习记录已保留，请刷新后继续。', 'Some older questions could not be loaded. Your history is preserved. Reload to continue.'],
+    archivedQuestion: ['已归档的题目 · 按原题评分', 'Archived question · Original scoring'],
+    archivedAnswers: ['回看已归档题目的作答', 'Review answers to archived questions'],
     noMatch: ['当前条件没有题目，请调整设置。', 'No questions match. Please adjust the settings.'], changed: ['另一窗口已更新学习记录，页面已同步。', 'Study history changed in another window. This page is now up to date.'],
     error: ['操作未完成，请重新选择练习后再试。', 'The action could not be completed. Please choose a practice and try again.'], today: ['今天', 'Today'],
     aiTitle: ['AI 出题', 'AI practice'],
@@ -266,10 +270,13 @@
       persistent = true;
       return saved;
     } catch (error) {
-      storageIssue = error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
+      storageIssue = storageError(error);
       persistent = false;
       return Core.createState();
     }
+  }
+  function storageError(error) {
+    return ({ SecurityError: 'storageUnavailable', IncompleteStudyCatalog: 'storageIncompleteCatalog' })[error.name] || 'storageDamaged';
   }
   function setState(next) {
     state = next;
@@ -291,7 +298,7 @@
         setState(readGuestState());
       } catch (error) {
         persistent = false;
-        storageIssue = error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
+        storageIssue = storageError(error);
       }
     }
     setState(update(state));
@@ -576,7 +583,7 @@
       <section class="stats-grid" aria-label="${t('workspace')}">${statCard('answered', stats.total, t('questionsUnit'), '▤')}${statCard('accuracy', stats.accuracy === null ? '—' : `${stats.accuracy}%`, stats.accuracy === null ? t('noData') : '', '◎')}${statCard('pending', stats.mistakes, t('questionsUnit'), '▧')}</section>
       <section><div class="section-heading"><h2>${t('subjects')}</h2><span class="section-note">${t('available', { n: subjects.filter(subject => subject.available).length })}</span></div><div class="subject-grid">${subjects.filter(subject => subject.available).map(subject => {
         const stats = Core.getStats(state, questions, subject.id);
-        const total = bank.filter(question => question.subject === subject.id && !question.diagnosticOnly && !question.focusOnly).length;
+        const total = bank.filter(question => question.subject === subject.id && !question.retired && !question.diagnosticOnly && !question.focusOnly).length;
         return `<article class="subject-card ${subject.id}"><div class="subject-top"><span class="subject-symbol" aria-hidden="true">${subject.symbol}</span><span class="subject-meta">${t('questionBank', { n: total })}</span></div><h3>${text(subject.label)}</h3><p class="subject-description">${text(subject.description)}</p><div class="subject-footer"><span class="subject-coverage">${t('coverage', { n: stats.total })}</span>${button(t('start'), 'subject', 'secondary', `data-subject="${subject.id}"`)}</div></article>`;
       }).join('')}</div></section>
       <div class="lower-grid"><section class="panel"><div class="section-heading"><h2>${t('activity')}</h2><span class="section-note">${t('lastWeek')}</span></div><div class="week-chart">${days.map((day, index) => `<div class="chart-column ${index === 6 ? 'today' : ''}" aria-label="${escapeHtml(day.date.toLocaleDateString(locale()))} ${t('questionCount', { n: day.total })}"><span class="bar-number">${day.total}</span><span class="bar-space"><span class="bar" style="height:${Math.max(3, day.total / max * 100)}%"></span></span><span>${index === 6 ? t('today') : escapeHtml(day.date.toLocaleDateString(locale(), { weekday: 'short' }))}</span></div>`).join('')}</div></section>
@@ -637,7 +644,7 @@
     const { subject, topic, curriculum = '' } = setup;
     if (Science.topics[topic]?.subject !== subject || curriculum) return null;
     const level = setup.level === 'auto' ? Learning.subjectProfile(state, subject)[topic].level : setup.level;
-    const wrong = Core.getMistakes(state, questions).find(item => item.question.topic === topic && item.question.level === level);
+    const wrong = Core.getMistakes(state, questions).find(item => !item.question.retired && item.question.topic === topic && item.question.level === level);
     const candidates = new Set(Science.candidates({ subject, topic, level }).map(question => question.id));
     const avoid = [...new Set(state.attempts.map(attempt => attempt.questionId).filter(id => candidates.has(id)))].slice(-8);
     return { subject, topic, level, curriculum, weakness: wrong?.question.errorKinds?.[wrong.attempt.choice] || '', avoid };
@@ -786,7 +793,20 @@
           : english ? `<p class="records-note">${t('singleEnglish', { level: english.level })}</p>` : ''}
         ${ieltsTarget ? `<p class="records-note">${t('targetSummary', { band: ieltsTarget })}</p>` : ''}
         ${englishTopics.length ? `<div class="records-grid">${englishTopics.map(topic => renderTopicRecord('english', topic, rows[topic], englishLevels[topic])).join('')}</div>` : empty}
-      </section>${scienceRecords}${study.renderBackup(backupStatus, state.flags)}`;
+      </section>${scienceRecords}${renderArchivedAnswers()}${study.renderBackup(backupStatus, state.flags)}`;
+  }
+
+  function renderArchivedAnswers() {
+    const archived = Core.reportableAttempts(state).filter(attempt => byId.get(attempt.questionId)?.retired);
+    if (!archived.length) return '';
+    return `<details class="panel study-panel study-details" id="archived-answers"><summary>${t('archivedAnswers')}</summary>
+      <div class="result-list">${archived.slice().reverse().map(attempt => {
+        const question = byId.get(attempt.questionId);
+        return `<details class="study-details"><summary>${text(question.prompt)}</summary>
+          <p class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))} · ${t('archivedQuestion')} · ${t(attempt.correct ? 'correct' : 'incorrect')}</p>
+          ${renderAnswerDetails(question, attempt)}
+        </details>`;
+      }).join('')}</div></details>`;
   }
 
   function renderTopicRecord(subject, topic, row, profile) {
@@ -820,6 +840,12 @@
 
   function expectedLabel(question) {
     return answerLabel(question, question.fields ? question.fields.map(field => field.expected) : question.answer);
+  }
+
+  function renderAnswerDetails(question, attempt) {
+    return `<p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
+      ${t('rightAnswer', { answer: expectedLabel(question) })}<br>
+      ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>${study.renderEvidence(question)}`;
   }
 
   function renderNumericFields(question, response, graded, score, hideSolution = false) {
@@ -890,6 +916,7 @@
           ${question.ai || question.sample ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
+        ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : ''}
         ${question.fields ? renderNumericFields(question, choice || [], graded, showGrade ? score : null, guidedMiss)
           : `<div class="options" role="radiogroup" aria-labelledby="question-title">${options}</div>`}
         ${hasHint && !graded ? `<div class="hint-area">
@@ -912,7 +939,7 @@
     const nextDay = Coach.lessonChecks(state, questions);
     const filtered = mistakes.filter(item => mistakeFilter === 'all' || item.question.subject === mistakeFilter);
     const reviewButtons = subjects.filter(subject => subject.available && (mistakeFilter === 'all' || mistakeFilter === subject.id)).map(subject => {
-      const count = mistakes.filter(item => item.question.subject === subject.id).length;
+      const count = mistakes.filter(item => !item.question.retired && item.question.subject === subject.id).length;
       return count ? button(t('reviewSubject', { subject: subject.label[state.language], n: count }), 'review', '', `data-subject="${subject.id}"`) : '';
     }).join('');
     return `${heading(t('mistakesTitle'), t('mistakesSub'))}<div class="filters">${['all', ...subjects.filter(subject => subject.available).map(subject => subject.id)].map(id => `<button class="filter-button ${mistakeFilter === id ? 'active' : ''}" data-action="filter" data-filter="${id}" aria-pressed="${mistakeFilter === id}">${id === 'all' ? t('allSubjects') : subjectName(id)}</button>`).join('')}</div>
@@ -920,9 +947,9 @@
       ${filtered.length ? `<div class="mistake-list">${filtered.map(({ question, attempt, wrongCount }) => `<article class="mistake-card">
         <div class="mistake-meta"><span>${subjectName(question.subject)} · ${text(topics[question.topic])}</span><span>${t('wrongCount', { n: wrongCount })}</span></div>
         <h3>${text(question.prompt)}</h3><p class="mistake-answer">${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}</p>
-        ${study.renderClue(question, attempt, nextDay)}
+        ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : study.renderClue(question, attempt, nextDay)}
         <details><summary>${t('explanation')}</summary><p><strong>${t('rightAnswer', { answer: expectedLabel(question) })}</strong><br>${text(question.explanation)}</p></details>
-        <div class="question-bottom"><span class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))}</span>${button(t('reviewOne'), 'review-one', 'secondary', `data-id="${question.id}"`)}</div>
+        <div class="question-bottom"><span class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))}</span>${question.retired ? '' : button(t('reviewOne'), 'review-one', 'secondary', `data-id="${question.id}"`)}</div>
       </article>`).join('')}</div>` : `<section class="panel empty-state"><span class="empty-symbol" aria-hidden="true">✓</span><h2>${t('emptyTitle')}</h2><p>${t('emptyText')}</p>${button(t('start'), 'setup')}</section>`}`;
   }
 
@@ -943,7 +970,7 @@
     if (!session) return `${heading(t('result'))}
       <section class="panel empty-state practice-layout"><p>${t('resultEmpty')}</p>${button(t('start'), 'setup')}</section>`;
     const attempts = state.attempts.filter(attempt => attempt.sessionId === session.id);
-    const wrong = attempts.filter(attempt => !attempt.correct);
+    const wrong = attempts.filter(attempt => !attempt.correct && !byId.get(attempt.questionId)?.retired);
     const placement = Learning.placementResult(state, session);
     const diagnostic = session.mode === 'diagnostic';
     const nextDay = Coach.lessonChecks(state, questions);
@@ -970,12 +997,9 @@
           <span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span>
           <details>
             <summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary>
-            ${!attempt.correct && question.purpose === 'lesson' ? study.renderClue(question, attempt, nextDay) : ''}
-            <p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
-            ${t('rightAnswer', { answer: expectedLabel(question) })}<br>
-            ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>
-            ${study.renderEvidence(question)}
-            ${study.renderQuestionReport(question, state.flags.find(flag => flag.questionId === id))}
+            ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : !attempt.correct && question.purpose === 'lesson' ? study.renderClue(question, attempt, nextDay) : ''}
+            ${renderAnswerDetails(question, attempt)}
+            ${question.retired ? '' : study.renderQuestionReport(question, state.flags.find(flag => flag.questionId === id))}
           </details>
         </div>`;
       }).join('')}</section>
@@ -1445,12 +1469,12 @@
       if (action === 'filter') { mistakeFilter = target.dataset.filter; render(); }
       if (action === 'review' || action === 'review-one') {
         const subject = action === 'review-one' ? byId.get(target.dataset.id).subject : target.dataset.subject;
-        const ids = Core.getMistakes(state, questions).filter(item => item.question.subject === subject && (action !== 'review-one' || item.question.id === target.dataset.id)).map(item => item.question.id);
+        const ids = Core.getMistakes(state, questions).filter(item => !item.question.retired && item.question.subject === subject && (action !== 'review-one' || item.question.id === target.dataset.id)).map(item => item.question.id);
         await begin({ subject, ids, count: Math.max(1, ids.length), mode: 'review' });
       }
       if (action === 'review-result') {
         const session = state.sessions.find(session => session.id === target.dataset.session);
-        const ids = state.attempts.filter(attempt => attempt.sessionId === session.id && !attempt.correct).map(attempt => attempt.questionId);
+        const ids = state.attempts.filter(attempt => attempt.sessionId === session.id && !attempt.correct && !byId.get(attempt.questionId)?.retired).map(attempt => attempt.questionId);
         await begin({ subject: session.subject, ids, count: ids.length, mode: 'review' });
       }
       if (action === 'clear' && !account && await confirmAction('clearTitle', 'clearText', 'clear') && !account) {
@@ -1510,7 +1534,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.12';
+    script.src = 'tests.js?v=2.13';
     document.body.appendChild(script);
   }
 })();

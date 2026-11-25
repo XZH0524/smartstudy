@@ -230,7 +230,8 @@
   function candidates({ subject, topic, level, curriculum = '', avoid = [] }) {
     if (topics[topic]?.subject !== subject || !scienceSubjects.includes(subject) || !data.levels[subject].includes(level)) return [];
     const excluded = new Set(avoid);
-    return questions.filter(question => question.topic === topic && question.level === level && question.role === 'practice'
+    return data.questions.filter(question => !question.retired && question.review === 'template-validated'
+      && question.topic === topic && question.level === level && question.role === 'practice'
       && (!curriculum || question.curriculumRefs.some(ref => ref.curriculum === curriculum)) && !excluded.has(question.id));
   }
 
