@@ -1296,8 +1296,10 @@
     for (const subject of ['math', 'english']) {
       const lesson = questions.filter(q => q.subject === subject && q.purpose === 'lesson');
       const transfer = questions.filter(q => q.subject === subject && q.purpose === 'transfer');
+      const followups = questions.filter(q => q.subject === subject && q.purpose === 'followup');
       equal(lesson.length, 12);
       equal(transfer.length, 2);
+      equal(followups.length, subject === 'math' ? 6 : 10);
       const contexts = new Set(lesson.map(q => q.lessonGroup));
       equal(contexts.size, 3);
       const seen = new Set();
@@ -1307,8 +1309,13 @@
         equal(new Set(ids.map(id => byId.get(id).lessonGroup)).size, 3);
         for (const id of ids) { assert(!seen.has(id)); seen.add(id); state.attempts.push({questionId:id}); }
       }
-      for (const q of transfer) assert(!contexts.has(q.lessonGroup) && !seen.has(q.id));
-      for (const q of [...lesson, ...transfer]) {
+      const contextsForChecks = new Set(contexts);
+      for (const q of [...transfer, ...followups]) {
+        assert(q.focusOnly && !contextsForChecks.has(q.lessonGroup) && !seen.has(q.id), q.id);
+        contextsForChecks.add(q.lessonGroup);
+      }
+      if (subject === 'english') equal(new Set(followups.map(q => q.evidenceType)).size, 5);
+      for (const q of [...lesson, ...transfer, ...followups]) {
         if (subject === 'math') {
           const match = q.prompt.en.match(/(\d+)x ([+−]) (\d+) = (\d+)$/);
           assert(match, q.id);
@@ -1345,6 +1352,10 @@
     assert(question.purpose === 'lesson' && !document.querySelector('.feedback q'));
     click('[data-choice="' + ((question.answer + 1) % 4) + '"]');
     click('[data-action="grade"]');
+    assert(element('.feedback .mistake-clue').textContent.includes('这一步的提示'));
+    assert(!element('.feedback > details').open);
+    assert(!document.querySelector('.option.correct'));
+    element('.feedback > details').open = true;
     equal(element('.feedback q').textContent, question.evidenceQuote);
     assert(element('.feedback a[href="#coach/text-evidence"]'));
     equal(Coach.assessment(read(), questions)['text-evidence'].status, 'possible');
@@ -1357,6 +1368,9 @@
     element('#numeric-1').value = String(item.fields[1].expected);
     click('button[form="numeric-answer-form"]');
     assert(element('.feedback a[href="#coach/balance"]'));
+    assert(element('.feedback .mistake-clue').textContent.includes('等式两边都'));
+    assert(!element('.feedback > details').open);
+    assert(element('.numeric-mark.score-error').textContent.includes('这一步需要再算'));
     equal(Coach.assessment(read(), questions).balance.status, 'possible');
     const old = { ...read(), version:6 };
     equal(Backup.parse(Backup.serialize(old), questions).attempts[0].response, old.attempts[0].response);
@@ -1380,6 +1394,68 @@
     replayStorage(key);
     await go('coach/text-evidence', '.study-details');
     assert(!document.querySelector('[data-action="focus-practice"][data-mode="spaced"]'));
+    await resetUi();
+  });
+
+  await test('错题预约隔天一题，同日重复不加任务，重试连续用新题且不凭一题判为掌握', () => {
+    const question = byId.get('lesson-equation-ribbon-0');
+    const [intermediate, answer] = question.fields.map(field => field.expected);
+    const finish = (state, id, response, at, focus) => {
+      let run = start({ subject: byId.get(id).subject, ids: [id], count: 1, ...(focus ? { mode: 'spaced', focus } : {}) }, state);
+      run = Core.gradeAnswer(run, questions, response, at);
+      return Core.advanceSession(run, questions, at);
+    };
+    let state = finish(Core.createState(), question.id, [String(intermediate + 1), String(answer)], knownTime);
+    state = finish(state, question.id, [String(intermediate + 1), String(answer)], knownTime);
+    state = finish(state, question.id, [String(intermediate), String(answer + 1)], knownTime);
+    const sameDay = Coach.lessonChecks(state, questions, new Date(2026, 3, 2, 23, 59));
+    equal(sameDay.map(task => [task.focus, task.due, task.ready]), [
+      ['balance', '2026-04-03', false], ['coefficient', '2026-04-03', false]
+    ]);
+    const nextDay = Coach.lessonChecks(state, questions, new Date(laterTime));
+    assert(nextDay.every(task => task.ready));
+    assert(nextDay[0].id !== nextDay[1].id);
+    const check = byId.get(nextDay[0].id);
+    const expected = check.fields.map(field => String(field.expected));
+    assert(check.prompt.en !== question.prompt.en && check.lessonGroup !== question.lessonGroup && check.level === question.level);
+    const premature = finish(state, check.id, expected, knownTime, 'balance');
+    assert(Coach.lessonChecks(premature, questions, new Date(laterTime)).some(task => task.focus === 'balance' && task.id !== check.id));
+    const passed = finish(state, check.id, expected, laterTime, 'balance');
+    equal(Coach.lessonChecks(passed, questions, new Date(laterTime)).map(task => task.focus), ['coefficient']);
+    equal(Coach.assessment(passed, questions, new Date(laterTime)).balance.status, 'possible');
+    const retry = finish(state, check.id, [String(Number(expected[0]) + 1), expected[1]], laterTime, 'balance');
+    const waiting = Coach.lessonChecks(retry, questions, new Date(laterTime)).find(task => task.focus === 'balance');
+    equal(waiting.due, '2026-04-04');
+    assert(!waiting.ready && waiting.id !== check.id);
+    const empty = Coach.lessonChecks(retry, questions.filter(q => q.purpose !== 'followup'), new Date(2026, 3, 4, 9));
+    assert(empty.every(task => !task.ready && !task.id));
+  });
+
+  await test('英语旧错题隔天在学习中心发起同类新题，答错时先看线索再约下一天', async () => {
+    await resetUi();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const q = byId.get('lesson-evidence-lost-cap-3');
+    equal(q.evidenceType, 'person');
+    const open = start({ subject: 'english', ids: [q.id], count: 1 });
+    const history = Core.advanceSession(answerCurrent(open, false, yesterday.toISOString()), questions, yesterday.toISOString());
+    Core.saveState(localStorage, key, { ...history, version: 7 });
+    replayStorage(key);
+    await go('plan/checks', '[data-action="lesson-check"]');
+    click('[data-action="lesson-check"]');
+    await waitElement('#question-title');
+    const fresh = current();
+    equal(read().active.questionIds.length, 1);
+    assert(fresh.id !== q.id && fresh.purpose === 'followup' && fresh.evidenceType === q.evidenceType);
+    assert(!document.querySelector('[data-action="hint"]'));
+    await answerUi(false);
+    assert(!document.querySelector('.feedback .answer-line'));
+    click('[data-action="next"]');
+    await waitElement('.focus-result');
+    assert(element('.focus-result').textContent.includes('隔天再用一道新题'));
+    assert(element('.focus-result .mistake-clue').textContent.includes('谁做了这个动作'));
+    await go('plan/checks', '#lesson-checks-title');
+    assert(!document.querySelector('[data-action="lesson-check"]'));
     await resetUi();
   });
 
@@ -1568,11 +1644,12 @@
   await test('科学 AI 组题用白名单校验、拒绝越界题、失败时保留本地题库入口', async () => {
     await resetUi();
     const config = element('meta[name="eachveya-ai-endpoint"]');
-    const original = { origin: config.dataset.origin, enabled: config.dataset.scienceAi };
+    const original = { endpoint: config.content, origin: config.dataset.origin, enabled: config.dataset.scienceAi };
     const previousFetch = globalThis.fetch;
     const expected = Science.candidates({ subject: 'biology', topic: 'population-density', level: 'L4' }).slice(0, 3).map(item => item.id);
     let calls = 0;
     try {
+      config.content = 'https://eachveya.example/api/generate';
       config.dataset.origin = location.origin;
       config.dataset.scienceAi = 'enabled';
       globalThis.fetch = async (url, options) => {
@@ -1597,7 +1674,9 @@
       assert(element('.eyebrow').textContent.includes('AI 组题'));
     } finally {
       globalThis.fetch = previousFetch;
-      config.dataset.origin = original.origin;
+      config.content = original.endpoint;
+      if (original.origin === undefined) delete config.dataset.origin;
+      else config.dataset.origin = original.origin;
       if (original.enabled === undefined) delete config.dataset.scienceAi;
       else config.dataset.scienceAi = original.enabled;
       await resetUi();

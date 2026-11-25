@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const VERSION = 7;
+  const VERSION = 8;
   const AI = globalThis.EachVeyaAi;
   const { levels: { english: englishLevels }, topicsBySubject } = globalThis.SmartStudyData;
   const SkillData = globalThis.EachVeyaSkills;
@@ -77,7 +77,7 @@
   }
 
   function normalizeState(raw, questions) {
-    if (!raw || ![1, 2, 3, 4, 5, 6, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || ![1, 2, 3, 4, 5, 6, 7, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
     const generated = [];

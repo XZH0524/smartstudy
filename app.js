@@ -23,7 +23,8 @@
   }
   const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
     !available || practiceCounts.get(id) >= 400);
-  if (!completeBank || !globalThis.EachVeyaLessons || !Core?.evaluateAnswer || !AI?.ROUND_FORMATS || [Learning, Science, Coach, focusSkills, StudyUI, Backup].some(component => !component)) {
+  if (!completeBank || !globalThis.EachVeyaLessons || !data.questions.some(question => question.purpose === 'followup')
+    || Core?.VERSION !== 8 || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -48,10 +49,11 @@
   const accountEnabled = Boolean(Account?.enabled && !testing);
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
-  const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v6`, `${storagePrefix}.v5`, `${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
+  const LEGACY_STORAGE_KEYS = [7, 6, 5, 4, 3, 2, 1].map(version => `${storagePrefix}.v${version}`);
   const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     ...StudyUI.copy,
+    stepRetry: ['这一步需要再算', 'Recheck this step'],
     answerSound: ['作答音效', 'Answer sounds'],
     answerSoundOn: ['音效已开启', 'Answer sounds on'],
     answerSoundOff: ['音效已关闭', 'Answer sounds off'],
@@ -231,6 +233,7 @@
   let roadmapSubject = '';
   let backupStatus = null;
   let questionClock = null;
+  let displayedDay = '';
   let account = null;
   let auth = { challenge: '', status: '', busy: false };
 
@@ -316,6 +319,7 @@
   }
   function render() {
     const page = route();
+    displayedDay = Core.localDate(new Date());
     const chinese = state.language === 'zh';
     document.documentElement.lang = chinese ? 'zh-CN' : 'en';
     document.getElementById('brand').setAttribute('aria-label', t('brand'));
@@ -794,7 +798,8 @@
     </article>`;
   }
 
-  function modeLabel(mode) {
+  function modeLabel(mode, question) {
+    if (mode === 'spaced' && question?.purpose === 'followup') return t('lessonCheck');
     if (accountEnabled && mode === 'science-ai') return t('sciencePreviewMode');
     return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode', 'science-ai': 'scienceAiMode' })[mode] || mode);
   }
@@ -810,7 +815,7 @@
     return answerLabel(question, question.fields ? question.fields.map(field => field.expected) : question.answer);
   }
 
-  function renderNumericFields(question, response, graded, score) {
+  function renderNumericFields(question, response, graded, score, hideSolution = false) {
     return `<form id="numeric-answer-form" aria-labelledby="question-title" novalidate>
       ${!graded ? `<p class="question-hint" id="numeric-help">${t('numericHelp')}</p>` : ''}
       <div class="numeric-fields">${question.fields.map((field, index) => `<div class="field">
@@ -819,7 +824,7 @@
           autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40"
           value="${escapeHtml(response[index] ?? '')}" ${graded ? 'readonly' : 'aria-describedby="numeric-help"'}>
         ${score ? `<span class="numeric-mark ${score.marks[index] ? 'score-ok' : 'score-error'}">${score.marks[index]
-          ? t('numericMarkCorrect') : t('numericMarkExpected', { value: field.expected })}</span>` : ''}
+          ? t('numericMarkCorrect') : hideSolution ? t('stepRetry') : t('numericMarkExpected', { value: field.expected })}</span>` : ''}
       </div>`).join('')}</div>
       <p id="numeric-error" class="inline-error" role="alert" hidden>${t('numericInvalid')}</p>
     </form>`;
@@ -842,10 +847,12 @@
     const score = graded ? Core.evaluateAnswer(question, answer) : null;
     const correct = score?.correct === true;
     const showGrade = graded && !delayedFeedback;
+    const guidedMiss = showGrade && !correct && question.purpose === 'lesson';
+    const nextDay = guidedMiss ? Coach.lessonChecks(state, questions) : [];
     const done = Object.keys(session.answers).length;
     const total = session.questionIds.length;
     const options = !question.fields && question.options.map((option, index) => {
-      const correctOption = showGrade && index === question.answer;
+      const correctOption = showGrade && !guidedMiss && index === question.answer;
       const wrongOption = showGrade && index === answer && !correct;
       const chosen = choice === index;
       return `<button type="button" class="option ${chosen ? 'selected' : ''} ${correctOption ? 'correct' : ''} ${wrongOption ? 'incorrect' : ''}"
@@ -854,16 +861,16 @@
         ${correctOption || wrongOption ? `<span class="option-feedback" aria-hidden="true">${correctOption ? '✓' : '×'}</span>` : ''}
       </button>`;
     }).join('');
+    const solution = `<p class="answer-line">${t('rightAnswer', { answer: expectedLabel(question) })}</p>
+        <p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p>${study.renderEvidence(question)}`;
     const feedback = delayedFeedback
       ? `<div class="feedback diagnostic-feedback"><h3 id="feedback-title" tabindex="-1">${t(diagnostic ? 'diagnosticSubmitted' : 'focusedSubmitted')}</h3></div>`
       : `<div class="feedback ${correct ? '' : 'wrong'}">
         <h3 id="feedback-title" tabindex="-1">${t(correct ? 'correct' : 'incorrect')}</h3>
-        <p class="answer-line">${t('rightAnswer', { answer: expectedLabel(question) })}</p>
-        <p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p>
-        ${study.renderEvidence(question)}
-        ${!graded || correct ? '' : study.renderClue(question, score)}
+        ${!graded || correct ? '' : study.renderClue(question, score, nextDay)}
+        ${guidedMiss ? `<details class="study-details"><summary>${t('explanation')}</summary>${solution}</details>` : solution}
       </div>`;
-    return `<div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
+    return `<div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode, question)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
     <div class="practice-layout">
       <div class="question-top"><span>${t('progress', { current: session.index + 1, total })}</span>
         <span>${t('progressLabel', { subject: subjects.find(item => item.id === session.subject).label[state.language], done, total })}</span></div>
@@ -876,7 +883,7 @@
           ${question.ai || question.sample ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
-        ${question.fields ? renderNumericFields(question, choice || [], graded, showGrade ? score : null)
+        ${question.fields ? renderNumericFields(question, choice || [], graded, showGrade ? score : null, guidedMiss)
           : `<div class="options" role="radiogroup" aria-labelledby="question-title">${options}</div>`}
         ${hasHint && !graded ? `<div class="hint-area">
           ${hinted ? `<p id="question-hint" class="hint-content" tabindex="-1"><strong>${t('hint')}</strong> ${text(question.hint)}</p>`
@@ -895,6 +902,7 @@
 
   function renderMistakes() {
     const mistakes = Core.getMistakes(state, questions);
+    const nextDay = Coach.lessonChecks(state, questions);
     const filtered = mistakes.filter(item => mistakeFilter === 'all' || item.question.subject === mistakeFilter);
     const reviewButtons = subjects.filter(subject => subject.available && (mistakeFilter === 'all' || mistakeFilter === subject.id)).map(subject => {
       const count = mistakes.filter(item => item.question.subject === subject.id).length;
@@ -905,7 +913,7 @@
       ${filtered.length ? `<div class="mistake-list">${filtered.map(({ question, attempt, wrongCount }) => `<article class="mistake-card">
         <div class="mistake-meta"><span>${subjectName(question.subject)} · ${text(topics[question.topic])}</span><span>${t('wrongCount', { n: wrongCount })}</span></div>
         <h3>${text(question.prompt)}</h3><p class="mistake-answer">${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}</p>
-        ${study.renderClue(question, attempt)}
+        ${study.renderClue(question, attempt, nextDay)}
         <details><summary>${t('explanation')}</summary><p><strong>${t('rightAnswer', { answer: expectedLabel(question) })}</strong><br>${text(question.explanation)}</p></details>
         <div class="question-bottom"><span class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))}</span>${button(t('reviewOne'), 'review-one', 'secondary', `data-id="${question.id}"`)}</div>
       </article>`).join('')}</div>` : `<section class="panel empty-state"><span class="empty-symbol" aria-hidden="true">✓</span><h2>${t('emptyTitle')}</h2><p>${t('emptyText')}</p>${button(t('start'), 'setup')}</section>`}`;
@@ -931,8 +939,9 @@
     const wrong = attempts.filter(attempt => !attempt.correct);
     const placement = Learning.placementResult(state, session);
     const diagnostic = session.mode === 'diagnostic';
+    const nextDay = Coach.lessonChecks(state, questions);
     return `<div class="page-heading"><div>
-      <p class="eyebrow">${subjectName(session.subject)}${diagnostic ? '' : ` · ${modeLabel(session.mode)}`}</p>
+      <p class="eyebrow">${subjectName(session.subject)}${diagnostic ? '' : ` · ${modeLabel(session.mode, byId.get(session.questionIds[0]))}`}</p>
       <h1>${t(diagnostic ? 'diagnosticFinished' : 'complete')}</h1>
     </div></div>
     <div class="practice-layout">
@@ -954,6 +963,7 @@
           <span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span>
           <details>
             <summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary>
+            ${!attempt.correct && question.purpose === 'lesson' ? study.renderClue(question, attempt, nextDay) : ''}
             <p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
             ${t('rightAnswer', { answer: expectedLabel(question) })}<br>
             ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>
@@ -986,6 +996,8 @@
     if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
     commit(current => {
       if (current.active?.id !== previousId) throw new Error('The active practice changed');
+      if (options.lessonCheck && !Coach.lessonChecks(current, questions).some(task =>
+        task.focus === options.focus && task.ready && task.id === options.ids[0])) throw new Error('The next-day check changed');
       if (options.sample) return Core.startAlgebraSample(current, bank, options.level, options.format);
       if (options.ids) return Core.startSession(current, questions, options);
       const ids = Learning.practiceIds(current, options);
@@ -1395,6 +1407,12 @@
         const ids = globalThis.EachVeyaLessons.roundIds(state, subject);
         await begin({ subject, ids, count: ids.length });
       }
+      if (action === 'lesson-check') {
+        const task = Coach.lessonChecks(state, questions).find(item => item.focus === target.dataset.focus);
+        if (task?.resume) showActivePractice();
+        else if (task?.ready) await begin({ subject: focusSkills[task.focus].subject,
+          ids: [task.id], count: 1, focus: task.focus, mode: 'spaced', lessonCheck: true });
+      }
       if (action === 'focus-practice') {
         const { focus, mode } = target.dataset;
         const profile = Coach.assessment(state, questions)[focus];
@@ -1456,10 +1474,15 @@
       forceSetup = false;
     }
     render();
+    const checks = location.hash === '#plan/checks' && document.getElementById('lesson-checks-title');
+    if (checks) { checks.focus(); return; }
     window.scrollTo(0, 0);
     main.focus();
   });
-  document.addEventListener('visibilitychange', syncQuestionClock);
+  document.addEventListener('visibilitychange', () => {
+    syncQuestionClock();
+    if (!document.hidden && ['home', 'plan'].includes(route()) && displayedDay !== Core.localDate(new Date())) render();
+  });
   window.addEventListener('storage', event => {
     if (account) return;
     if (event.key !== STORAGE_KEY && !LEGACY_STORAGE_KEYS.includes(event.key) && event.key !== null) return;
@@ -1480,7 +1503,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.9';
+    script.src = 'tests.js?v=2.10';
     document.body.appendChild(script);
   }
 })();

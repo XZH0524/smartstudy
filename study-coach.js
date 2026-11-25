@@ -43,7 +43,7 @@
       const day = dayAt(date);
       if (attempt) {
         const question = byId.get(attempt.questionId);
-        if (!question) continue;
+        if (!question || question.purpose === 'followup') continue;
         const fresh = !firstAttempts.has(question.id);
         firstAttempts.add(question.id);
         const marks = attempt.focus ? [attempt.focus] : question.focus || [];
@@ -65,7 +65,10 @@
         }
         if (!attempt.correct && likely && (!attempt.focus || attempt.focus === likely) && !Core.focusModes.includes(attempt.mode)) {
           const entry = entries[likely];
-          if (question.purpose === 'lesson') entry.lessonLevel = question.level;
+          if (question.purpose === 'lesson') {
+            if (entry.status === 'unassessed') entry.status = 'possible';
+            continue;
+          }
           if (entry.status !== 'confirmed') entry.status = 'possible';
           entry.due = day;
           entry.interval = 0;
@@ -166,6 +169,52 @@
   }
 
   const mistakeFocus = Core.mistakeFocus;
+
+  function lessonChecks(state, catalog, now = new Date()) {
+    const byId = new Map(catalog.map(question => [question.id, question]));
+    const pending = new Map();
+    const used = new Set();
+    const today = dayAt(now);
+    const attempts = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime())
+      .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    function schedule(focus, question, date) {
+      if (!pending.has(focus)) pending.set(focus, { focus, source: question, due: dayAt(date, 1) });
+    }
+    for (const attempt of attempts) {
+      const question = byId.get(attempt.questionId);
+      const date = new Date(attempt.at);
+      const fresh = !used.has(attempt.questionId);
+      used.add(attempt.questionId);
+      if (question?.purpose === 'lesson' && !attempt.correct) {
+        const focus = mistakeFocus(question, attempt);
+        if (focus) schedule(focus, question, date);
+      } else if (question?.purpose === 'followup' && attempt.mode === 'spaced' && fresh) {
+        const task = pending.get(attempt.focus);
+        if (!task || task.due > dayAt(date)) continue;
+        pending.delete(attempt.focus);
+        if (!attempt.correct || attempt.hinted !== false) {
+          schedule(attempt.focus, question, date);
+          const step = mistakeFocus(question, attempt);
+          if (step && step !== attempt.focus) schedule(step, question, date);
+        }
+      }
+    }
+    // A submitted but unfinished check may be resumed. Its question cannot be assigned to a second skill.
+    for (const attempt of state.attempts) if (Date.parse(attempt.at) <= now.getTime()) used.add(attempt.questionId);
+    const active = state.active;
+    const activeQuestion = active?.mode === 'spaced' ? byId.get(active.questionIds[0]) : null;
+    if (activeQuestion?.purpose === 'followup') used.add(activeQuestion.id);
+    return [...pending.values()].sort((a, b) => a.due.localeCompare(b.due)).map(({ focus, due, source }) => {
+      const resume = activeQuestion?.purpose === 'followup' && active.focus === focus;
+      const candidates = catalog.filter(q => q.purpose === 'followup' && q.level === source.level
+        && q.subject === source.subject && q.focus.includes(focus) && q.lessonGroup !== source.lessonGroup && !used.has(q.id));
+      const preferred = candidates.find(q => source.evidenceType ? q.evidenceType === source.evidenceType
+        : Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
+      const id = resume ? activeQuestion.id : (preferred || candidates[0])?.id;
+      if (id && due <= today) used.add(id);
+      return { focus, due, id, ready: Boolean(id && due <= today), resume };
+    });
+  }
 
   function prerequisiteTrail(focus, profile) {
     const visited = new Set([focus]);
@@ -298,6 +347,7 @@
       : settings.goal === 'balanced' ? ['math', 'english'] : [settings.goal];
     const matchesFocus = id => subjects.includes(skills[id].subject)
       && (!settings.topic || settings.topic === skills[id].topic);
+    const nextDay = lessonChecks(state, catalog, now);
     const due = dueSkills(profile, now).filter(matchesFocus);
     const prerequisites = new Set(due.flatMap(focus => prerequisiteTrail(focus, profile)));
     due.sort((a, b) => Number(prerequisites.has(b)) - Number(prerequisites.has(a)));
@@ -315,7 +365,8 @@
       return { focus, mode, count, ready: focusIds(state, focus, mode, count, profile[focus]).length === count };
     });
     const review = [];
-    let remaining = slots;
+    const reservedSlots = nextDay.filter(task => task.ready && !task.resume && matchesFocus(task.focus)).length;
+    let remaining = Math.max(0, slots - reservedSlots);
     for (const { focus, mode, count, ready } of dueTasks) {
       if (review.length >= 2 || remaining < 1) break;
       if (remaining < count || !ready) continue;
@@ -367,9 +418,9 @@
       from: dayAt(now, from), to: dayAt(now, to), topic: choices[index % choices.length]?.topic,
       scheduled: upcoming.filter(item => item.date >= dayAt(now, from) && item.date <= dayAt(now, to))
     }));
-    return { settings, target, completed: completed.length, review, bankReview, practice, placement, week, weeks, dueCount: due.length,
+    return { settings, target, completed: completed.length, review, bankReview, practice, placement, week, weeks, dueCount: due.length, nextDay,
       unavailableReview: dueTasks.filter(task => !task.ready).map(task => task.focus), slots, usedSeconds, pace, deadlineSoon };
   }
 
-  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, dueSkills, report, reportWindows, learningPlan, roadmap, prerequisiteTrail, intervals };
+  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, lessonChecks, dueSkills, report, reportWindows, learningPlan, roadmap, prerequisiteTrail, intervals };
 })();

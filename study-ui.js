@@ -13,6 +13,25 @@
     equationLesson: ['分两步解方程 · L2', 'Two-step equations · L2'],
     readingLesson: ['找到支持答案的原句 · A1', 'Find the supporting sentence · A1'],
     originalEvidence: ['原文依据', 'Evidence in the passage'],
+    stepHint: ['这一步的提示', 'Hint for this step'],
+    stepSubtract: ['第一步先消掉左边的 +{n}。等式两边都减 {n}，再算右边的 {expression}。', 'First undo +{n} on the left. Subtract {n} from both sides, then work out {expression} on the right.'],
+    stepAdd: ['第一步先消掉左边的 −{n}。等式两边都加 {n}，再算右边的 {expression}。', 'First undo −{n} on the left. Add {n} to both sides, then work out {expression} on the right.'],
+    stepDivide: ['中间值算对了。现在两边同时除以 x 的系数 {n}，再算 {expression}。', 'Your intermediate value is correct. Divide both sides by the coefficient {n}, then work out {expression}.'],
+    cluePerson: ['先找问题说的动作，再看原文里谁做了这个动作。', 'Find the action in the question, then look for who actually does it in the passage.'],
+    cluePlace: ['先圈出问题里要找的人或物，再找同一句里的地点。只提到地点的句子还不够。', 'Find the person or thing from the question and the place in the same sentence. A place alone is not enough.'],
+    clueTime: ['先找问题问的那件事，再检查同一句中的时间。文中其他事情的时间容易混淆。', 'Find the event from the question, then check its time in the same sentence. Other events may have their own times.'],
+    clueReason: ['先找问题里的动作，再找说明原因的词，例如 because。', 'Find the action in the question, then look for a reason word such as “because”.'],
+    clueDetail: ['先找问题指的是哪件事，再核对原句是否同时说到了所问的细节。', 'Find the event or thing named in the question, then check that the same sentence gives the detail you need.'],
+    lessonChecks: ['错题跨日复测', 'Next-day checks on missed questions'],
+    lessonCheck: ['新题复测', 'New-question check'],
+    lessonStart: ['做一道新题', 'Try one new question'],
+    lessonStartSkill: ['做一道新题 · {skill}', 'Try one new question · {skill}'],
+    lessonStartsOn: ['{date} 可做一道新题', 'One new question available on {date}'],
+    lessonReady: ['新题已可以做', 'Your new question is ready'],
+    lessonUnavailable: ['这个专项暂时没有未做过的新题。', 'There are no unseen check questions left for this workshop.'],
+    lessonPassed: ['本次新题答对了。', 'You answered this new question correctly.'],
+    lessonRetry: ['先看这一步的提示，隔天再用一道新题试试。', 'Review the hint for this step and try another new question the next day.'],
+    lessonOpen: ['查看跨日复测', 'View next-day checks'],
     coach: ['分步辅导', 'Step-by-step guidance'],
     coachIntro: ['先判断自己卡在哪一步，再用没见过的题检验理解。', 'Find the step you got stuck on, then check your understanding on a new question.'],
     coachBasis: ['这些提示和例题由预设教学规则提供，可在本地使用。', 'These guided prompts and worked examples use built-in teaching rules and work locally.'],
@@ -111,15 +130,23 @@
       return question.evidenceQuote ? `<p><strong>${t('originalEvidence')}</strong> <q lang="en">${escapeHtml(question.evidenceQuote)}</q></p>` : '';
     }
 
-    function renderClue(question, attempt) {
+    function renderClue(question, attempt, nextDay = []) {
       const focus = Coach.mistakeFocus(question, attempt);
+      const targeted = question.purpose === 'lesson' || question.purpose === 'followup';
+      const task = targeted && nextDay.find(item => item.focus === focus);
+      const schedule = task ? `<p class="field-help">${lessonStatus(task)} · <a href="#plan/checks">${t('lessonOpen')}</a></p>` : '';
       if (question.fields) {
         if (!focus) return '';
         const { right, offset, coefficient } = question.equationStep;
-        const operation = focus === 'balance' ? right + (offset < 0 ? ' + ' : ' − ') + Math.abs(offset)
-          : question.fields[0].expected + ' ÷ (' + coefficient + ')';
-        const prompt = language() === 'zh' ? '单独算一算 ' + operation + '，你得到多少？' : 'Try ' + operation + ' on its own. What do you get?';
-        return `<div class="mistake-clue"><p>${escapeHtml(prompt)}</p>${linkToCoach(focus, t('probe'))}</div>`;
+        const prompt = focus === 'balance' ? t(offset < 0 ? 'stepAdd' : 'stepSubtract', {
+          n: Math.abs(offset), expression: right + (offset < 0 ? ' + ' : ' − ') + Math.abs(offset)
+        }) : t('stepDivide', { n: coefficient, expression: question.fields[0].expected + ' ÷ (' + coefficient + ')' });
+        return `<div class="mistake-clue"><p><strong>${t('stepHint')}</strong> ${prompt}</p>${schedule}${linkToCoach(focus, t('coachJump'))}</div>`;
+      }
+      if (question.evidenceType && focus === 'text-evidence') {
+        const hint = { person: 'cluePerson', place: 'cluePlace', time: 'clueTime', reason: 'clueReason', detail: 'clueDetail' };
+        return `<div class="mistake-clue"><p><strong>${t('stepHint')}</strong> ${t(hint[question.evidenceType])}</p>${schedule}
+          ${linkToCoach(focus, t('coachJump'))}</div>`;
       }
       if (!focus) return `<p class="field-help">${t('coachAmbiguous')}</p>`;
       const kind = Science.errorLabels[question.errorKinds?.[attempt.choice]];
@@ -163,6 +190,16 @@
 
     function renderFocusResult(state, catalog, session) {
       if (!session.focus) return '';
+      const checkQuestion = session.mode === 'spaced' && catalog.find(question => question.id === session.questionIds[0] && question.purpose === 'followup');
+      if (checkQuestion) {
+        const tasks = Coach.lessonChecks(state, catalog);
+        const task = tasks.find(item => item.focus === session.focus);
+        const answer = state.attempts.find(attempt => attempt.sessionId === session.id && attempt.questionId === checkQuestion.id);
+        return `<section class="panel study-panel focus-result"><h2>${t('lessonCheck')}</h2>
+          ${answer && !answer.correct ? renderClue(checkQuestion, answer, tasks) : ''}
+          <p>${t(session.correct ? 'lessonPassed' : task?.id ? 'lessonRetry' : 'lessonUnavailable')}</p>
+          <a href="#plan/checks">${t('lessonOpen')}</a></section>`;
+      }
       const record = Coach.assessment(state, catalog, new Date(session.completedAt))[session.focus];
       return `<section class="panel study-panel focus-result"><h2>${text(skills[session.focus].label)}</h2>
         <p>${t(sectionStatus[record.status])}</p>${record.lastCheck ? `<p>${t('coachCheckSummary', record.lastCheck)}</p>` : ''}
@@ -170,6 +207,18 @@
         ${linkToCoach(session.focus, t('coachJump'))}</section>`;
     }
     const formatDate = date => new Date(date + 'T00:00:00').toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
+    const lessonStatus = task => !task.id ? t('lessonUnavailable') : task.ready ? t('lessonReady') : t('lessonStartsOn', { date: formatDate(task.due) });
+
+    function renderLessonChecks(tasks) {
+      if (!tasks.length) return '';
+      return `<section class="panel study-panel" aria-labelledby="lesson-checks-title">
+        <h2 id="lesson-checks-title" tabindex="-1">${t('lessonChecks')}</h2>
+        <ul class="study-skill-list">${tasks.map(task => `<li data-lesson-focus="${task.focus}">
+          <strong>${text(skills[task.focus].label)}</strong>
+          <span class="section-note">${lessonStatus(task)}</span>
+          ${task.ready ? button(t(task.resume ? 'resume' : 'lessonStart'), 'lesson-check', 'secondary', `data-focus="${task.focus}"`) : ''}
+        </li>`).join('')}</ul></section>`;
+    }
 
     function planTopicOptions(goal, value = '') {
       return [['', t('allTopics')], ...(topicsBySubject[goal] || []).map(id => [id, text(topics[id])])]
@@ -181,6 +230,11 @@
         label: t('planReview', { topic: skills[focus].label[language()], n: count }),
         action: 'focus-practice', attrs: `data-focus="${focus}" data-mode="${mode}"`
       }));
+      if (compact) {
+        const check = plan.nextDay.find(task => task.ready);
+        if (check) tasks.unshift({ label: t('lessonStartSkill', { skill: skills[check.focus].label[language()] }),
+          action: 'lesson-check', attrs: `data-focus="${check.focus}"` });
+      }
       if (plan.bankReview) tasks.push({ label: t('planBankReview', {
         subject: subjects.find(item => item.id === plan.bankReview.subject).label[language()], n: plan.bankReview.count
       }), action: 'plan-review' });
@@ -245,6 +299,7 @@
       }
       return `${heading(t('plan'), t('planSubtitle'))}
         ${renderToday(plan, state.active)}
+        ${renderLessonChecks(plan.nextDay)}
         <section class="panel study-panel"><h2>${t('evidenceLessons')}</h2><div class="study-actions">
           ${button(t('equationLesson'), 'lesson', 'secondary', 'data-subject="math"')}
           ${button(t('readingLesson'), 'lesson', 'secondary', 'data-subject="english"')}</div>

@@ -31,15 +31,25 @@
     'A box weighs 3 g. With four identical models inside it weighs 35 g. Each model weighs x grams.'), 'transfer');
   equation('walk', 0, 3, -2, 9, bi('步行者连续三次向东走 x 米，随后向西走 2 米，最终在起点以东 25 米处。',
     'A walker takes three eastward stretches of x metres each and then walks 2 metres west, finishing 25 metres east of the start.'), 'transfer');
+  for (const [group, a, b, x, zh, en] of [
+    ['paint', 7, 4, 9, '7 瓶颜料每瓶 x 元，另付 4 元运费，共付 67 元。', 'Seven paint bottles cost x yuan each. With a 4 yuan delivery fee, the total is 67 yuan.'],
+    ['robot', 6, -4, 8, '机器人前进 6 次，每次 x 厘米，然后后退 4 厘米，净前进 44 厘米。', 'A robot moves forward six times by x cm, then moves back 4 cm. It ends 44 cm ahead.'],
+    ['pages', 5, 6, 11, '周一读了 6 页，之后 5 天每天读 x 页，共读了 61 页。', 'A reader reads 6 pages on Monday and x pages a day for the next five days, 61 pages in all.'],
+    ['packing', 4, -5, 12, '4 袋纽扣每袋 x 枚，取出 5 枚后，剩下 43 枚。', 'Four bags hold x buttons each. After five buttons are taken out, 43 are left.'],
+    ['garden', 8, 3, 7, '8 行幼苗，每行 x 株，再加上盆里的 3 株，共有 59 株。', 'Eight rows contain x seedlings each. With three more in a pot, there are 59 seedlings.'],
+    ['chain', 9, -6, 5, '9 段铁链，每段 x 厘米。共剪掉 6 厘米后，总长为 39 厘米。', 'Nine pieces of chain are x cm each. After 6 cm is cut off in total, their length is 39 cm.']
+  ]) equation(group, 0, a, b, x, bi(zh, en), 'followup');
 
   function evidence(group, index, passage, ask, answer, explanation, purpose = 'lesson') {
     const sentences = passage.match(/[^.!?]+[.!?]/g)?.map(s => s.trim());
     if (sentences?.length !== 4 || sentences.join(' ') !== passage || !sentences[answer]) throw new Error('Invalid reading passage ' + group);
+    const evidenceType = /^who\b/i.test(ask.en) ? 'person' : /^where\b/i.test(ask.en) ? 'place' :
+      /^(when|what time|on which day)\b/i.test(ask.en) ? 'time' : /^why\b/i.test(ask.en) ? 'reason' : 'detail';
     items.push({
       id: 'lesson-evidence-' + group + '-' + index, subject: 'english', topic: 'reading', track: 'cefr', level: 'A1',
       focusOnly: true, lessonGroup: group, purpose, focus: ['text-evidence'],
       prompt: bi(passage + '\n\n哪句原文能回答这个问题？' + ask.zh, passage + '\n\nWhich sentence answers this question? ' + ask.en),
-      options: sentences.map(s => bi(s, s)), answer, evidenceQuote: sentences[answer],
+      options: sentences.map(s => bi(s, s)), answer, evidenceQuote: sentences[answer], evidenceType,
       hint: bi('先找问题问的是人、地点、时间还是原因，再对照每句所说的事情。',
         'Identify the person, place, time or reason being asked about. Then compare the sentences.'),
       explanation, errors: Object.fromEntries(sentences.flatMap((_, i) => i === answer ? [] : [[i, 'text-evidence']]))
@@ -59,6 +69,28 @@
     bi('第二张海报挂在哪里？', 'Where did Lee hang the second poster?'), 2, bi('第三句把第二张海报和门旁的位置联系起来。', 'The third sentence links the second poster to its place by the door.'), 'transfer');
   evidence('picnic', 0, 'We met beside the lake. Rain began at noon. We ate inside the tent because the grass was wet. Dad took the tent home on Sunday.',
     bi('大家为什么在帐篷里吃饭？', 'Why did they eat in the tent?'), 2, bi('第三句给出了原因，草地是湿的。', 'The third sentence gives the reason: the grass was wet.'), 'transfer');
+  for (const [group, passage, zh, en, answer, whyZh, whyEn] of [
+    ['museum', 'Jin gives out maps at the door. Paul checks the tickets. The museum opens at ten. The café closes at four.',
+      '谁在门口发地图？', 'Who gives out maps at the door?', 0, '第一句把发地图的动作和 Jin 联系起来。', 'The first sentence links Jin to giving out maps.'],
+    ['bird-box', 'Eva paints a bird box. Her sister has a red bag. Tom puts the bird box in the tree. They eat lunch by the gate.',
+      '谁把鸟箱放到了树上？', 'Who puts the bird box in the tree?', 2, '第三句的主语 Tom 做了这个动作。', 'Tom is the person doing this in the third sentence.'],
+    ['drama', 'School ends at three. The drama club meets at half past three. The music club starts at four. All clubs end at five.',
+      '戏剧社几点集合？', 'When does the drama club meet?', 1, '第二句把戏剧社和三点半联系起来。', 'The second sentence gives half past three as the drama club time.'],
+    ['market', 'We buy apples in the morning. The bread stall is near the gate. We walk home after lunch. The market closes at two.',
+      '集市几点关门？', 'When does the market close?', 3, '最后一句说的是关门时间，两点。', 'The last sentence states the closing time, two o’clock.'],
+    ['keys', 'My blue bag is on the chair. I left the keys on the kitchen table. The front door is locked. Please wait by the gate.',
+      '钥匙在哪里？', 'Where are the keys?', 1, '第二句同时提到钥匙和厨房桌子。', 'The second sentence mentions both the keys and the kitchen table.'],
+    ['pool', 'The pool opens at nine. Please pay at the front desk. Towels are on the shelf. Put your shoes under the bench.',
+      '鞋应放在哪里？', 'Where should you put your shoes?', 3, '最后一句是关于鞋的指示，地点是长凳下面。', 'The last sentence gives the instruction about shoes: under the bench.'],
+    ['bikes', 'We met outside the shop. I had my bike with me. I walked home because I could not ride it. Leo took the bus.',
+      '我为什么步行回家？', 'Why did I walk home?', 2, '第三句把步行与不能骑车的原因直接连起来。', 'The third sentence directly connects walking home to being unable to ride.'],
+    ['concert', 'I sat near the front because I wanted to see the band. Leo sat beside the door. We went to the concert on Friday. We went home at nine.',
+      '我为什么坐在靠前的位置？', 'Why did I sit near the front?', 0, '第一句说明我想看清乐队。', 'The first sentence explains that I wanted to see the band.'],
+    ['picnic-list', 'I put two cups in the bag. Sara brought three apples. We shared one sandwich. Dad carried a bottle of water.',
+      '萨拉带了什么？', 'What did Sara bring?', 1, '第二句用 Sara 作主语，说她带了三个苹果。', 'The second sentence tells us that Sara brought three apples.'],
+    ['crafts', 'We made paper boats at school. Mine is yellow. Mina made a blue boat. We put the boats in a box.',
+      '米娜的纸船是什么颜色的？', 'What colour is Mina’s boat?', 2, '第三句同时提到 Mina 和蓝色纸船。', 'The third sentence mentions both Mina and the blue boat.']
+  ]) evidence(group, 0, passage, bi(zh, en), answer, bi(whyZh, whyEn), 'followup');
   questions.push(...items);
 
   function roundIds(state, subject) {
