@@ -12,11 +12,14 @@
     lessonReview: ['本组题已通过程序检查，仍待独立教师复核。发现问题可在练习结果中报错。', 'These questions have passed automated checks and await independent teacher review. Flag an issue from your results.'],
     equationLesson: ['分两步解方程 · L2', 'Two-step equations · L2'],
     readingLesson: ['找到支持答案的原句 · A1', 'Find the supporting sentence · A1'],
+    speedLesson: ['物理 · 平均速率 · L2', 'Physics · Average speed · L2'],
     originalEvidence: ['原文依据', 'Evidence in the passage'],
     stepHint: ['这一步的提示', 'Hint for this step'],
     stepSubtract: ['第一步先消掉左边的 +{n}。等式两边都减 {n}，再算右边的 {expression}。', 'First undo +{n} on the left. Subtract {n} from both sides, then work out {expression} on the right.'],
     stepAdd: ['第一步先消掉左边的 −{n}。等式两边都加 {n}，再算右边的 {expression}。', 'First undo −{n} on the left. Add {n} to both sides, then work out {expression} on the right.'],
     stepDivide: ['中间值算对了。现在两边同时除以 x 的系数 {n}，再算 {expression}。', 'Your intermediate value is correct. Divide both sides by the coefficient {n}, then work out {expression}.'],
+    speedTime: ['计时从出发到结束。把两段行进的秒数和中间停留的秒数都加起来。', 'The clock runs from start to finish. Add both moving times and the time spent stopped.'],
+    speedRate: ['总用时已经算对。用总路程（米）除以这个总用时（秒），得到每秒走了多少米。', 'Your elapsed time is correct. Divide the total distance in metres by that time in seconds to get metres per second.'],
     cluePerson: ['先找问题说的动作，再看原文里谁做了这个动作。', 'Find the action in the question, then look for who actually does it in the passage.'],
     cluePlace: ['先圈出问题里要找的人或物，再找同一句里的地点。只提到地点的句子还不够。', 'Find the person or thing from the question and the place in the same sentence. A place alone is not enough.'],
     clueTime: ['先找问题问的那件事，再检查同一句中的时间。文中其他事情的时间容易混淆。', 'Find the event from the question, then check its time in the same sentence. Other events may have their own times.'],
@@ -135,6 +138,11 @@
       const targeted = question.purpose === 'lesson' || question.purpose === 'followup';
       const task = targeted && nextDay.find(item => item.focus === focus);
       const schedule = task ? `<p class="field-help">${lessonStatus(task)} · <a href="#plan/checks">${t('lessonOpen')}</a></p>` : '';
+      if (question.speedSteps && focus) {
+        const marks = Core.evaluateAnswer(question, Core.responseOf(attempt)).marks;
+        return `<div class="mistake-clue"><p><strong>${t('stepHint')}</strong> ${t(marks[0] ? 'speedRate' : 'speedTime')}</p>${schedule}
+          ${linkToCoach(focus, t('coachJump'))}</div>`;
+      }
       if (question.fields) {
         if (!focus) return '';
         const { right, offset, coefficient } = question.equationStep;
@@ -230,11 +238,8 @@
         label: t('planReview', { topic: skills[focus].label[language()], n: count }),
         action: 'focus-practice', attrs: `data-focus="${focus}" data-mode="${mode}"`
       }));
-      if (compact) {
-        const check = plan.nextDay.find(task => task.ready);
-        if (check) tasks.unshift({ label: t('lessonStartSkill', { skill: skills[check.focus].label[language()] }),
-          action: 'lesson-check', attrs: `data-focus="${check.focus}"` });
-      }
+      tasks.unshift(...plan.todayChecks.map(({ focus }) => ({ label: t('lessonStartSkill', { skill: skills[focus].label[language()] }),
+        action: 'lesson-check', attrs: `data-focus="${focus}"` })));
       if (plan.bankReview) tasks.push({ label: t('planBankReview', {
         subject: subjects.find(item => item.id === plan.bankReview.subject).label[language()], n: plan.bankReview.count
       }), action: 'plan-review' });
@@ -301,8 +306,8 @@
         ${renderToday(plan, state.active)}
         ${renderLessonChecks(plan.nextDay)}
         <section class="panel study-panel"><h2>${t('evidenceLessons')}</h2><div class="study-actions">
-          ${button(t('equationLesson'), 'lesson', 'secondary', 'data-subject="math"')}
-          ${button(t('readingLesson'), 'lesson', 'secondary', 'data-subject="english"')}</div>
+          ${Object.entries(globalThis.EachVeyaLessons.workshops).map(([subject, label]) =>
+            button(t(label), 'lesson', 'secondary', `data-subject="${subject}"`)).join('')}</div>
           <p class="field-help">${t('lessonReview')}</p></section>
         ${renderRoadmap(state, catalog, preferredSubject || settings.goal)}
         <section class="panel study-panel plan-preview">

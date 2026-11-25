@@ -131,9 +131,14 @@
   function focusIds(state, focus, mode, count = mode === 'spaced' ? 1 : 2, record) {
     if (!Object.hasOwn(skills, focus) || !Core.focusModes.includes(mode)) return [];
     const used = new Set(state.attempts.map(attempt => attempt.questionId));
+    if (mode === 'spaced' && record?.lessonLevel) {
+      const reserved = questions.filter(q => q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus) && !used.has(q.id));
+      if (reserved.length >= count) return reserved.slice(0, count).map(q => q.id);
+      if (!Science.topics[focus]) return [];
+    }
     if (Science.topics[focus]) {
       const topic = Science.topics[focus];
-      const level = record?.level || Learning.subjectProfile(state, topic.subject)[focus].level;
+      const level = record?.level || record?.lessonLevel || Learning.subjectProfile(state, topic.subject)[focus].level;
       const role = mode === 'probe' ? 'probe' : 'transfer';
       const pool = topic.denominator ? Science.questions : Science.focusQuestions || [];
       const options = pool.filter(question => question.topic === focus && question.level === level && question.role === role && !used.has(question.id));
@@ -141,10 +146,6 @@
       const related = error && role === 'probe' ? options.filter(question => Object.values(question.errorKinds).includes(error)) : [];
       const selected = (related.length >= count ? related : options).slice(0, count);
       return selected.length === count ? selected.map(question => question.id) : [];
-    }
-    if (mode === 'spaced' && record?.lessonLevel) {
-      const reserved = questions.filter(q => q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus) && !used.has(q.id));
-      return reserved.length >= count ? reserved.slice(0, count).map(q => q.id) : [];
     }
     if (mode === 'retake' && record?.lessonLevel) {
       const chosen = [];
@@ -209,7 +210,7 @@
       const candidates = catalog.filter(q => q.purpose === 'followup' && q.level === source.level
         && q.subject === source.subject && q.focus.includes(focus) && q.lessonGroup !== source.lessonGroup && !used.has(q.id));
       const preferred = candidates.find(q => source.evidenceType ? q.evidenceType === source.evidenceType
-        : Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
+        : source.equationStep && q.equationStep && Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
       const id = resume ? activeQuestion.id : (preferred || candidates[0])?.id;
       if (id && due <= today) used.add(id);
       return { focus, due, id, ready: Boolean(id && due <= today), resume };
@@ -348,7 +349,8 @@
     const matchesFocus = id => subjects.includes(skills[id].subject)
       && (!settings.topic || settings.topic === skills[id].topic);
     const nextDay = lessonChecks(state, catalog, now);
-    const due = dueSkills(profile, now).filter(matchesFocus);
+    const lessonFocuses = new Set(nextDay.filter(task => task.id).map(task => task.focus));
+    const due = dueSkills(profile, now).filter(focus => matchesFocus(focus) && !lessonFocuses.has(focus));
     const prerequisites = new Set(due.flatMap(focus => prerequisiteTrail(focus, profile)));
     due.sort((a, b) => Number(prerequisites.has(b)) - Number(prerequisites.has(a)));
     const attempts = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime());
@@ -365,8 +367,8 @@
       return { focus, mode, count, ready: focusIds(state, focus, mode, count, profile[focus]).length === count };
     });
     const review = [];
-    const reservedSlots = nextDay.filter(task => task.ready && !task.resume && matchesFocus(task.focus)).length;
-    let remaining = Math.max(0, slots - reservedSlots);
+    const todayChecks = nextDay.filter(task => task.ready && !task.resume && matchesFocus(task.focus)).slice(0, slots);
+    let remaining = slots - todayChecks.length;
     for (const { focus, mode, count, ready } of dueTasks) {
       if (review.length >= 2 || remaining < 1) break;
       if (remaining < count || !ready) continue;
@@ -405,8 +407,10 @@
     const practice = practiceCount ? {
       subject: next.subject, topic: next.topic, count: practiceCount, level: next.subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
     } : null;
-    const upcoming = Object.entries(profile).filter(([id, value]) => matchesFocus(id) && value.due > today && value.due <= dayAt(now, 29))
+    const upcoming = Object.entries(profile).filter(([id, value]) => matchesFocus(id) && !lessonFocuses.has(id) && value.due > today && value.due <= dayAt(now, 29))
       .map(([focus, value]) => ({ focus, date: value.due }))
+      .concat(nextDay.filter(task => task.id && matchesFocus(task.focus) && task.due > today && task.due <= dayAt(now, 29))
+        .map(({ focus, due: date }) => ({ focus, date })))
       .concat(bankReviews.filter(item => item.date > today && item.date <= dayAt(now, 29))
         .map(item => ({ topic: item.question.topic, date: item.date })))
       .sort((a, b) => a.date.localeCompare(b.date));
@@ -418,7 +422,7 @@
       from: dayAt(now, from), to: dayAt(now, to), topic: choices[index % choices.length]?.topic,
       scheduled: upcoming.filter(item => item.date >= dayAt(now, from) && item.date <= dayAt(now, to))
     }));
-    return { settings, target, completed: completed.length, review, bankReview, practice, placement, week, weeks, dueCount: due.length, nextDay,
+    return { settings, target, completed: completed.length, review, bankReview, practice, placement, week, weeks, dueCount: due.length, nextDay, todayChecks,
       unavailableReview: dueTasks.filter(task => !task.ready).map(task => task.focus), slots, usedSeconds, pace, deadlineSoon };
   }
 

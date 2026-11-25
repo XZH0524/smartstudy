@@ -5,6 +5,7 @@
   const { decorateEquation } = globalThis.EachVeyaSkills;
   const byId = new Map(questions.map(q => [q.id, q]));
   const items = [];
+  const workshops = { math: 'equationLesson', english: 'readingLesson', physics: 'speedLesson' };
 
   function equation(group, index, a, b, x, context, purpose = 'lesson') {
     const spec = { level: 'L2', form: 'plain', a, b, c: 0, d: a * x + b, distractors: [x - 1, x + 1, x + 2] };
@@ -91,6 +92,43 @@
     ['crafts', 'We made paper boats at school. Mine is yellow. Mina made a blue boat. We put the boats in a box.',
       '米娜的纸船是什么颜色的？', 'What colour is Mina’s boat?', 2, '第三句同时提到 Mina 和蓝色纸船。', 'The third sentence mentions both Mina and the blue boat.']
   ]) evidence(group, 0, passage, bi(zh, en), answer, bi(whyZh, whyEn), 'followup');
+
+  function averageSpeed(group, index, context, [first, stop, last, speed], purpose = 'lesson') {
+    const total = first + stop + last;
+    const distance = total * speed;
+    items.push({
+      id: 'lesson-speed-' + group + '-' + index, subject: 'physics', topic: 'average-speed', level: 'L2',
+      skill: 'calculation', curriculumRefs: [],
+      focusOnly: true, lessonGroup: group, purpose, focus: ['average-speed'], speedSteps: true, format: 'calculation',
+      prompt: bi(`${context.zh}，先移动 ${first} 秒，停留 ${stop} 秒，再移动 ${last} 秒。全程走过 ${distance} 米。求从出发到结束的总用时和平均速率。`,
+        `${context.en} moves for ${first} s, stops for ${stop} s and then moves for ${last} s. It covers ${distance} m in all. Find the total elapsed time and the average speed from start to finish.`),
+      fields: [
+        { label: bi('第 1 步 · 总用时 = □ s', 'Step 1 · Total elapsed time = □ s'), expected: total },
+        { label: bi('第 2 步 · 平均速率 = □ m/s', 'Step 2 · Average speed = □ m/s'), expected: speed }
+      ],
+      hint: bi('把行进和停留的时间都计入总用时，再用总路程除以总用时。',
+        'Include both moving time and stopped time, then divide the total distance by the total elapsed time.'),
+      explanation: bi(`总用时为 ${first} + ${stop} + ${last} = ${total} 秒。平均速率为 ${distance} ÷ ${total} = ${speed} m/s。`,
+        `The total elapsed time is ${first} + ${stop} + ${last} = ${total} s. The average speed is ${distance} ÷ ${total} = ${speed} m/s.`)
+    });
+  }
+
+  for (const [group, context, rows] of [
+    ['cart', bi('模型小车在直道上行驶', 'A model car on a straight track'), [[6, 2, 4, 1], [7, 3, 5, 2], [8, 4, 6, 1], [9, 5, 7, 2]]],
+    ['runner', bi('一名跑步者沿跑道前进', 'A runner on a track'), [[10, 6, 8, 2], [12, 8, 9, 3], [11, 7, 13, 2], [15, 5, 12, 3]]],
+    ['cyclist', bi('一辆自行车沿小路前进', 'A bicycle on a path'), [[14, 7, 9, 4], [16, 6, 13, 3], [17, 8, 11, 5], [20, 4, 14, 4]]]
+  ]) rows.forEach((row, index) => averageSpeed(group, index, context, row));
+
+  for (const [group, zh, en, row, purpose] of [
+    ['kayak', '一艘独木舟在平静水面上行进', 'A kayak on still water', [25, 10, 15, 2], 'transfer'],
+    ['bus', '一辆公交车沿街道行驶', 'A bus on a street', [22, 8, 20, 6], 'transfer'],
+    ['delivery', '一辆配送车沿街道行驶', 'A delivery van on a street', [21, 9, 18, 5]],
+    ['pond', '一只鸭子在平静的池塘里游动', 'A duck in a still pond', [13, 4, 8, 1]],
+    ['skater', '一名滑冰者沿冰道滑行', 'A skater on an ice rink', [10, 5, 12, 3]],
+    ['shuttle', '一辆接驳车沿站台旁的道路行驶', 'A shuttle on a road by a platform', [18, 12, 15, 4]],
+    ['dog', '一只狗沿草地上的小径奔跑', 'A dog on a path through a field', [9, 3, 13, 4]],
+    ['robot-cart', '一辆仓库搬运机器人沿通道行驶', 'A warehouse robot along an aisle', [12, 7, 10, 1]]
+  ]) averageSpeed(group, 0, bi(zh, en), row, purpose || 'followup');
   questions.push(...items);
 
   function roundIds(state, subject) {
@@ -105,5 +143,5 @@
       return true;
     }).map(q => q.id);
   }
-  globalThis.EachVeyaLessons = { roundIds };
+  globalThis.EachVeyaLessons = { roundIds, workshops };
 })();

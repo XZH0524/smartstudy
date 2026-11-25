@@ -5,6 +5,7 @@
   const AI = globalThis.EachVeyaAi;
   const Science = globalThis.EachVeyaScience;
   const Coach = globalThis.EachVeyaCoach;
+  const Lessons = globalThis.EachVeyaLessons;
   const focusSkills = globalThis.EachVeyaSkills?.skills;
   const StudyUI = globalThis.EachVeyaStudyUI;
   const Sound = globalThis.EachVeyaSound;
@@ -23,7 +24,7 @@
   }
   const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
     !available || practiceCounts.get(id) >= 400);
-  if (!completeBank || !globalThis.EachVeyaLessons || !data.questions.some(question => question.purpose === 'followup')
+  if (!completeBank || !Lessons?.workshops || !data.questions.some(question => question.speedSteps && question.purpose === 'followup')
     || Core?.VERSION !== 8 || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
@@ -1402,9 +1403,9 @@
       if (action === 'ai-fallback' && AI.LEVELS.includes(target.dataset.level)) {
         await begin({ subject: 'math', topic: 'algebra', level: target.dataset.level, count: 3 });
       }
-      if (action === 'lesson' && ['math', 'english'].includes(target.dataset.subject)) {
+      if (action === 'lesson' && Object.hasOwn(Lessons.workshops, target.dataset.subject)) {
         const subject = target.dataset.subject;
-        const ids = globalThis.EachVeyaLessons.roundIds(state, subject);
+        const ids = Lessons.roundIds(state, subject);
         await begin({ subject, ids, count: ids.length });
       }
       if (action === 'lesson-check') {
@@ -1503,7 +1504,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.10';
+    script.src = 'tests.js?v=2.11';
     document.body.appendChild(script);
   }
 })();

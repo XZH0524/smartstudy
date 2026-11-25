@@ -104,16 +104,21 @@
     equal(byId.get('ma-a08').topic, 'functions');
   });
 
-  await test('双语题干、解析、难度标签及四个不同选项齐全', () => {
+  await test('双语题干、解析、难度标签及作答区域齐全', () => {
     for (const item of questions) {
       assert(subjects.some(subject => subject.id === item.subject && subject.available), item.id);
       assert(topics[item.topic] && topicsBySubject[item.subject].includes(item.topic), item.id);
       assert(levels[item.subject].includes(item.level), item.id);
       assert(item.subject === 'english' ? item.track === 'cefr' : skills[item.skill] && Array.isArray(item.curriculumRefs), item.id);
+      for (const lang of ['zh', 'en']) assert(item.prompt[lang]?.length && item.explanation[lang]?.length, item.id);
+      if (item.fields) {
+        assert(item.fields.length > 0 && item.fields.every(field => Number.isSafeInteger(field.expected)
+          && field.label.zh.includes('□') && field.label.en.includes('□')), item.id);
+        if (!item.options) continue;
+      }
       equal(item.options.length, 4);
       assert(Number.isInteger(item.answer) && !!item.options[item.answer], item.id);
       for (const lang of ['zh', 'en']) {
-        assert(item.prompt[lang]?.length && item.explanation[lang]?.length, item.id);
         assert(item.options.every(option => typeof option[lang] === 'string' && option[lang].length), item.id);
         assert(new Set(item.options.map(option => option[lang])).size === 4, `Repeated option in ${item.id}`);
       }
@@ -1292,14 +1297,14 @@
     await resetUi();
   });
 
-  await test('两科专项的答案可独立核对，练习和保留的跨日题使用不同材料', () => {
-    for (const subject of ['math', 'english']) {
+  await test('三科专项的答案可独立核对，练习和保留的跨日题使用不同材料', () => {
+    for (const subject of ['math', 'english', 'physics']) {
       const lesson = questions.filter(q => q.subject === subject && q.purpose === 'lesson');
       const transfer = questions.filter(q => q.subject === subject && q.purpose === 'transfer');
       const followups = questions.filter(q => q.subject === subject && q.purpose === 'followup');
       equal(lesson.length, 12);
       equal(transfer.length, 2);
-      equal(followups.length, subject === 'math' ? 6 : 10);
+      equal(followups.length, subject === 'english' ? 10 : 6);
       const contexts = new Set(lesson.map(q => q.lessonGroup));
       equal(contexts.size, 3);
       const seen = new Set();
@@ -1322,13 +1327,96 @@
           const [, a, sign, b, d] = match;
           const right = Number(d) - (sign === '+' ? Number(b) : -Number(b));
           equal(q.fields.map(f => f.expected), [right, right / Number(a)]);
-        } else {
+        } else if (subject === 'english') {
           const passage = q.prompt.en.split('\n\n')[0];
           assert(q.options.every(opt => passage.includes(opt.en)));
           equal(q.options[q.answer].en, q.evidenceQuote);
+        } else {
+          const numbers = lang => Array.from(q.prompt[lang].matchAll(/\d+/g), match => Number(match[0]));
+          const [first, stop, last, distance] = numbers('en');
+          const time = first + stop + last;
+          equal(numbers('zh'), [first, stop, last, distance]);
+          equal(q.fields.map(field => field.expected), [time, distance / time]);
+          assert(stop > 0 && Number.isInteger(distance / time) && time !== distance / time);
+          assert(q.fields[0].label.en.endsWith('□ s') && q.fields[1].label.en.endsWith('□ m/s'));
         }
       }
     }
+  });
+
+  await test('物理专项分别提示漏计停留和求速率，隔日独立答对只清除本次任务', async () => {
+    await resetUi();
+    await go('plan', '[data-action="lesson"][data-subject="physics"]');
+    click('[data-action="lesson"][data-subject="physics"]');
+    await waitElement('#numeric-answer-form');
+    const first = current();
+    const [firstTime, firstRate] = first.fields.map(field => field.expected);
+    const stopped = Number(first.prompt.en.match(/stops for (\d+) s/)[1]);
+    element('#numeric-0').value = String(firstTime - stopped);
+    element('#numeric-1').value = String(firstRate);
+    click('button[form="numeric-answer-form"]');
+    assert(element('.feedback .mistake-clue').textContent.includes('中间停留的秒数'));
+    assert(!element('.feedback > details').open);
+    assert(element('.feedback .mistake-clue').textContent.includes('可做一道新题'));
+    assert(!document.querySelector('.feedback [data-action="lesson-check"]'));
+    assert(element('.numeric-mark.score-error').textContent.includes('这一步需要再算'));
+    click('[data-action="next"]');
+    const second = current();
+    const [secondTime, secondRate] = second.fields.map(field => field.expected);
+    element('#numeric-0').value = String(secondTime);
+    element('#numeric-1').value = String(secondRate + 1);
+    click('button[form="numeric-answer-form"]');
+    assert(element('.feedback .mistake-clue').textContent.includes('用总路程（米）除以这个总用时（秒）'));
+    assert(!element('.feedback > details').open);
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const at = yesterday.toISOString();
+    let history = start({ subject: 'physics', ids: [first.id], count: 1 });
+    history = Core.advanceSession(Core.gradeAnswer(history, questions, [String(firstTime - stopped), String(firstRate)], at), questions, at);
+    const [pending] = Coach.lessonChecks(history, questions, yesterday);
+    assert(pending.focus === 'average-speed' && !pending.ready);
+    Core.saveState(localStorage, key, history);
+    replayStorage(key);
+    await go('plan', '#daily-plan-title');
+    click('.today-plan [data-action="lesson-check"][data-focus="average-speed"]');
+    await waitElement('#numeric-answer-form');
+    const fresh = current();
+    assert(fresh.purpose === 'followup' && fresh.lessonGroup !== first.lessonGroup && fresh.level === first.level);
+    assert(!document.querySelector('[data-action="hint"]'));
+    fresh.fields.forEach((field, index) => { element('#numeric-' + index).value = String(field.expected); });
+    click('button[form="numeric-answer-form"]');
+    assert(!document.querySelector('.feedback .answer-line'));
+    click('[data-action="next"]');
+    await waitElement('.focus-result');
+    assert(element('.focus-result').textContent.includes('本次新题答对了'));
+    equal(Coach.lessonChecks(read(), questions), []);
+    equal(Coach.assessment(read(), questions)['average-speed'].status, 'possible');
+    const restored = Backup.parse(Backup.serialize(read()), questions);
+    equal(restored.attempts.map(attempt => attempt.response), read().attempts.map(attempt => attempt.response));
+    fitsViewport();
+    await resetUi();
+  });
+
+  await test('专项复测合并到日程，按学习目标和当天可用时间安排', () => {
+    const focus = 'average-speed';
+    const ids = globalThis.EachVeyaLessons.roundIds(Core.createState(), 'physics');
+    let state = start({ subject: 'physics', ids, count: 3 });
+    for (const [index, id] of ids.entries()) {
+      const [time, speed] = byId.get(id).fields.map(field => field.expected);
+      state = Core.advanceSession(Core.gradeAnswer(state, questions, [String(time), String(speed + Number(index === 2))], knownTime), questions, knownTime);
+    }
+    state.plan = { enabled: true, goal: 'physics', topic: focus, minutes: 8, deadline: '' };
+    equal(Coach.assessment(state, questions, new Date(knownTime))[focus].status, 'scheduled');
+    const tomorrow = Coach.learningPlan(state, questions, new Date(knownTime)).week[1];
+    equal(tomorrow.scheduled, [{ focus, date: tomorrow.date }]);
+    const plan = Coach.learningPlan(state, questions, new Date(laterTime));
+    equal(plan.todayChecks.map(task => task.focus), [focus]);
+    assert(!plan.review.some(task => task.focus === focus));
+    equal(plan.practice.count + plan.todayChecks.length, plan.slots);
+    const other = Coach.learningPlan({ ...state, plan: { ...state.plan, goal: 'math', topic: '' } }, questions, new Date(laterTime));
+    equal(other.todayChecks, []);
+    equal(other.nextDay.map(task => task.focus), [focus]);
   });
 
   await test('分步错答触发探查，矛盾或缺失的证据不会被当成已证实的错误', () => {
