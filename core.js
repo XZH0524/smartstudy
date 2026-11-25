@@ -53,6 +53,21 @@
     ? question.passageId || question.originalId || question.id : '';
   const schedulesLessonCheck = question => question?.purpose === 'lesson' || question?.readingEvidence === true;
 
+  function evaluateField(field, input) {
+    if (field.type === 'text') {
+      if (typeof input !== 'string' || input.length > 40) return null;
+      const normalize = value => value.normalize('NFKC').trim().toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/gu, ' ');
+      const value = normalize(input);
+      if (!/^[a-z][a-z '\-]*$/u.test(value)) return null;
+      const correct = [field.expected, ...(field.accepted || [])].some(answer => normalize(answer) === value);
+      return { text: input.trim(), correct };
+    }
+    const value = AI.parseNumber(input);
+    const expected = AI.parseNumber(String(field.expected));
+    if (!value || !expected) return null;
+    return { text: value.text, correct: value.numerator * expected.denominator === expected.numerator * value.denominator };
+  }
+
   function evaluateAnswer(question, response) {
     if (!question) return null;
     if (!question.fields) {
@@ -60,10 +75,10 @@
         ? { choice: response, correct: response === question.answer } : null;
     }
     if (!Array.isArray(response) || response.length !== question.fields.length) return null;
-    const numbers = Array.from(response, AI.parseNumber);
-    if (numbers.some(number => !number)) return null;
-    const marks = numbers.map((number, index) => number.numerator === BigInt(question.fields[index].expected) * number.denominator);
-    return { response: numbers.map(number => number.text), correct: marks.every(Boolean), marks };
+    const fields = question.fields.map((field, index) => evaluateField(field, response[index]));
+    if (fields.some(field => !field)) return null;
+    const marks = fields.map(field => field.correct);
+    return { response: fields.map(field => field.text), correct: marks.every(Boolean), marks };
   }
 
   function mistakeFocus(question, attempt) {
@@ -181,8 +196,12 @@
         const known = new Set(questionsForState(questions, restored).map(question => question.id));
         const answered = raw.attempts.filter(entry => typeof entry?.questionId === 'string' && entry.questionId
           && typeof entry.sessionId === 'string' && entry.sessionId && dateIsValid(entry.at)).map(entry => entry.questionId);
+        const completed = raw.sessions.filter(session => typeof session?.id === 'string' && session.id
+          && dateIsValid(session.completedAt) && Array.isArray(session.questionIds)).flatMap(session => session.questionIds);
         const active = Array.isArray(raw.active?.questionIds) ? raw.active.questionIds : [];
-        if ([...answered, ...active].some(id => typeof id === 'string' && id && !known.has(id))) {
+        const flagged = Array.isArray(raw.flags) ? raw.flags.filter(flag => flagReasons.includes(flag?.reason)
+          && dateIsValid(flag.at)).map(flag => flag.questionId) : [];
+        if ([...answered, ...completed, ...active, ...flagged].some(id => typeof id === 'string' && id && !known.has(id))) {
           const error = new Error('Saved history references an unavailable question');
           error.name = 'IncompleteStudyCatalog';
           throw error;
@@ -351,6 +370,6 @@
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
     shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf, mistakeFocus,
     advanceSession, localDate, dailyStats,
-    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage, schedulesLessonCheck
+    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage, schedulesLessonCheck, evaluateField
   };
 })();

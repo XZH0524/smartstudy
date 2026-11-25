@@ -17,19 +17,18 @@
   const soundButton = document.getElementById('sound-toggle');
 
   // Reading history with an incomplete bank can drop otherwise valid answers.
-  const practiceCounts = new Map();
-  for (const question of data?.questions || []) {
-    if (!question.retired && !question.diagnosticOnly && !question.focusOnly) {
-      practiceCounts.set(question.subject, (practiceCounts.get(question.subject) || 0) + 1);
-    }
-  }
-  const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
-    !available || practiceCounts.get(id) >= 400);
+  const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) => {
+    if (!available) return true;
+    const practice = data.questions.filter(question =>
+      question.subject === id && !question.retired && !question.diagnosticOnly && !question.focusOnly);
+    const fillCount = practice.filter(question => question.fields).length;
+    return fillCount >= 100 && practice.length - fillCount >= 400;
+  });
   const workshopSubjects = new Set(data?.questions?.filter(question => !question.retired && question.purpose === 'followup').map(question => question.subject));
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
   if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 2
-    || Core?.VERSION !== 8 || !Core?.readingPassage || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
+    || Core?.VERSION !== 8 || !Core?.evaluateField || !Core?.readingPassage || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -148,7 +147,7 @@
     replaceTitle: ['开始一组新练习？', 'Start a new practice?'], replaceText: ['当前练习将结束。已经提交的答案仍计入学习记录。', 'The current practice will end. Submitted answers remain in your study history.'],
     continue: ['开始新练习', 'Start new practice'], storageUnavailable: ['浏览器无法保存记录。你仍可练习，但关闭或刷新页面后，本次记录可能丢失。请在普通浏览模式下打开。', 'This browser cannot save your progress. You can practise, but this session may be lost after closing or refreshing. Try a normal browsing window.'],
     storageDamaged: ['学习记录无法读取。浏览器里的原记录已保留，本次作答暂时无法保存。', 'Saved study data could not be read. The existing record is kept, and answers in this session cannot be saved.'],
-    storageIncompleteCatalog: ['部分旧题暂未加载。原学习记录已保留，请刷新后继续。', 'Some older questions could not be loaded. Your history is preserved. Reload to continue.'],
+    storageIncompleteCatalog: ['当前页面缺少学习记录引用的题目。原记录已保留。请刷新，或打开曾做这些题的新版网页。', 'This page is missing questions referenced by your study history. Your saved records are intact. Reload or open the version where you answered those questions.'],
     archivedQuestion: ['已归档的题目 · 按原题评分', 'Archived question · Original scoring'],
     archivedAnswers: ['回看已归档题目的作答', 'Review answers to archived questions'],
     noMatch: ['当前条件没有题目，请调整设置。', 'No questions match. Please adjust the settings.'], changed: ['另一窗口已更新学习记录，页面已同步。', 'Study history changed in another window. This page is now up to date.'],
@@ -164,6 +163,8 @@
     aiSampleMode: ['题型试做', 'Sample practice'],
     aiSampleFailed: ['试做暂时无法开始，请重新选择难度。', 'The sample could not start. Choose a level again.'],
     numericHelp: ['填写整数、小数或分数，例如 −3、3.0、6/2。', 'Enter a whole number, decimal or fraction, such as −3, 3.0 or 6/2.'],
+    textFillHelp: ['按题目要求输入英语单词或短语。', 'Enter an English word or phrase as directed.'],
+    textFillInvalid: ['请在空格中填入英语单词或短语。', 'Fill in the blank with an English word or phrase.'],
     numericInvalid: ['请在每个空格填入有效数字。分数的分母不能为 0。', 'Enter a valid number in each field. A fraction must have a nonzero denominator.'],
     numericMarkCorrect: ['这一步正确', 'Correct'],
     numericMarkExpected: ['这一步应填 {value}', 'Expected {value}'],
@@ -701,7 +702,7 @@
   }
 
   function renderSetup() {
-    const { subject, topic, level, count, track, curriculum = '' } = setup;
+    const { subject, topic, level, count, track, curriculum = '', format = 'choice' } = setup;
     const math = subject === 'math';
     const science = Science.subjects.includes(subject);
     const english = subject === 'english';
@@ -717,6 +718,7 @@
     const subjectOptions = subjects.filter(item => item.available).map(item => [item.id, text(item.label)]);
     const topicOptions = [['', t('allTopics')], ...topicsBySubject[subject].map(id => [id, science ? `${text(Science.topics[id].domainLabel)} · ${text(topics[id])}` : text(topics[id])])];
     const levelOptions = [['auto', autoLabel], ...levels[subject].map(item => [item, english ? item : `${item} · ${text(tierLabels[item])}`])];
+    const formatOptions = [['choice', t('aiChoice')], ['fill', t('aiFill')], ['all', t('aiMixed')]];
     const courseOptions = [['', t('generalScience')], ...curricula.filter(course => Science.curriculumKeys.includes(course.id)).map(course => [course.id, text(course.label)])];
     const countOptions = ['5', '8', '12', '20', 'all'].map(value =>
       [value, value === 'all' ? t('allQuestions') : t('questionCount', { n: value })]);
@@ -744,6 +746,7 @@
           <div class="field-grid practice-fields">
             ${selectField('topic', t('topic'), topicOptions, topic)}
             ${selectField('difficulty', t('difficulty'), levelOptions, level)}
+            ${selectField('format', t('aiFormat'), formatOptions, format)}
             ${selectField('count', t('count'), countOptions, count)}
           </div>
           <p class="field-help">${t(english ? 'cefrScope' : 'mathScale')}</p>
@@ -852,8 +855,9 @@
   }
 
   function renderNumericFields(question, response, graded, score, hideSolution = false) {
+    const textAnswer = question.fields.some(field => field.type === 'text');
     return `<form id="numeric-answer-form" aria-labelledby="question-title" novalidate>
-      ${!graded ? `<p class="question-hint" id="numeric-help">${t('numericHelp')}</p>` : ''}
+      ${!graded ? `<p class="question-hint" id="numeric-help">${t(textAnswer ? 'textFillHelp' : 'numericHelp')}</p>` : ''}
       <div class="numeric-fields">${question.fields.map((field, index) => `<div class="field">
         <label for="numeric-${index}">${text(field.label)}</label>
         <input id="numeric-${index}" name="answer-${index}" class="numeric-input" data-numeric-input type="text"
@@ -862,7 +866,7 @@
         ${score ? `<span class="numeric-mark ${score.marks[index] ? 'score-ok' : 'score-error'}">${score.marks[index]
           ? t('numericMarkCorrect') : hideSolution ? t('stepRetry') : t('numericMarkExpected', { value: field.expected })}</span>` : ''}
       </div>`).join('')}</div>
-      <p id="numeric-error" class="inline-error" role="alert" hidden>${t('numericInvalid')}</p>
+      <p id="numeric-error" class="inline-error" role="alert" hidden>${t(textAnswer ? 'textFillInvalid' : 'numericInvalid')}</p>
     </form>`;
   }
 
@@ -916,7 +920,7 @@
       <section class="panel question-card">
         <div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${escapeHtml(question.level)}</span>
           ${question.ai ? `<span class="tag">${t(accountEnabled ? 'aiPreviewBank' : 'aiGenerated')}</span>` : ''}
-          ${question.ai || question.sample ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
+          ${question.ai || question.sample || question.format === 'fill' ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
         ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : ''}
@@ -1208,7 +1212,7 @@
       setup.aiFormat = value;
       return;
     }
-    if (!['subject', 'topic', 'difficulty', 'count', 'ielts-target', 'curriculum'].includes(id)) return;
+    if (!['subject', 'topic', 'difficulty', 'format', 'count', 'ielts-target', 'curriculum'].includes(id)) return;
     cancelAiRequest();
     if (id === 'subject') {
       openSetup(value);
@@ -1252,7 +1256,9 @@
       event.preventDefault();
       const fields = [...event.target.querySelectorAll('[data-numeric-input]')];
       if (fields.every(field => field.readOnly)) return;
-      const invalid = fields.find(field => !AI.parseNumber(field.value));
+      const question = byId.get(state.active?.questionIds[state.active.index]);
+      if (!question?.fields) return;
+      const invalid = fields.find((field, index) => !Core.evaluateField(question.fields[index], field.value));
       if (invalid) {
         document.getElementById('numeric-error').hidden = false;
         invalid.setAttribute('aria-invalid', 'true');
@@ -1537,7 +1543,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.15';
+    script.src = 'tests.js?v=2.17';
     document.body.appendChild(script);
   }
 })();

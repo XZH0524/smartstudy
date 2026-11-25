@@ -182,10 +182,11 @@
       .sort((a, b) => b.count - a.count);
   }
 
-  function practicePool(state, { subject, topic, level, curriculum = '' }) {
+  function practicePool(state, { subject, topic, level, curriculum = '', format = 'choice' }) {
     const profiles = level === 'auto' && topicsBySubject[subject] ? subjectProfile(state, subject) : null;
     return questions.filter(question => question.subject === subject && !question.retired && !question.diagnosticOnly && !question.focusOnly
       && (!curriculum || question.curriculumRefs?.some(ref => ref.curriculum === curriculum))
+      && (format === 'all' || format === (question.fields ? 'fill' : 'choice'))
       && (!topic || question.topic === topic) && question.level === (profiles ? profiles[question.topic].level : level));
   }
 

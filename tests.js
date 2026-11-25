@@ -112,7 +112,7 @@
       assert(item.subject === 'english' ? item.track === 'cefr' : skills[item.skill] && Array.isArray(item.curriculumRefs), item.id);
       for (const lang of ['zh', 'en']) assert(item.prompt[lang]?.length && item.explanation[lang]?.length, item.id);
       if (item.fields) {
-        assert(item.fields.length > 0 && item.fields.every(field => Number.isSafeInteger(field.expected)
+        assert(item.fields.length > 0 && item.fields.every(field => Core.evaluateField(field, String(field.expected))?.correct
           && field.label.zh.includes('□') && field.label.en.includes('□')), item.id);
         if (!item.options) continue;
       }
@@ -194,8 +194,12 @@
     equal(Learning.practicePool(physics, { subject: 'physics', topic: 'average-speed', level: 'L5' }).length, 16);
   });
 
-  await test('每科各有 400 道免费题，新增科学知识点用未见的跨日复测升级', () => {
-    for (const subject of subjects) equal(questions.filter(item => item.subject === subject.id && !item.retired && !item.focusOnly && !item.diagnosticOnly).length, 400);
+  await test('每科各有 500 道免费题，科学知识点用未见的跨日复测升级', () => {
+    for (const subject of subjects) {
+      const practice = questions.filter(item => item.subject === subject.id && !item.retired && !item.focusOnly && !item.diagnosticOnly);
+      equal(practice.length, 500);
+      equal(practice.filter(item => item.fields).length, 100);
+    }
     const topic = 'forces-motion';
     const pool = Learning.practicePool(Core.createState(), { subject: 'physics', topic, level: 'L1' });
     equal(pool.length, 8);
@@ -713,6 +717,26 @@
     throws(() => Core.normalizeState({ version: 99, attempts: [], sessions: [] }, questions));
   });
 
+  await test('载入缺少对应题库时，已完成练习的索引与仅保存的题目报错不会被抹去', () => {
+    const question = byId.get('fill-english-present-simple-1');
+    const partial = questions.filter(item => item.id !== question.id);
+    const reported = Core.flagQuestion(Core.createState(), question, 'answer', knownTime);
+    const completedOnly = { ...Core.createState(), sessions: [{ id: 'links-to-a-completed-set',
+      subject: 'english', questionIds: [question.id], completedAt: knownTime }] };
+    for (const state of [reported, completedOnly]) {
+      const saved = JSON.stringify(state);
+      const storage = { getItem: () => saved };
+      try {
+        Core.readState(storage, key, [], partial);
+        assert(false, 'Loading omitted a missing question');
+      } catch (error) {
+        equal(error.name, 'IncompleteStudyCatalog');
+      }
+      equal(storage.getItem(key), saved);
+    }
+    equal(Core.readState({ getItem: () => JSON.stringify(reported) }, key, [], questions), reported);
+  });
+
   await test('两道快速错答让系统多收集证据，慢答和已存历史不会因速度降级', () => {
     const ids = mathIds('functions', 'L2', 5);
     let state = start({ ids, count: ids.length });
@@ -1073,7 +1097,10 @@
   async function answerUi(correct) {
     const item = current();
     if (item.fields) {
-      item.fields.forEach((field, index) => { element(`#numeric-${index}`).value = String(field.expected + (!correct && index === 0 ? 1 : 0)); });
+      item.fields.forEach((field, index) => {
+        element(`#numeric-${index}`).value = correct || index ? String(field.expected)
+          : field.type === 'text' ? 'incorrect answer' : Number.isInteger(field.expected) ? String(field.expected + 1) : '0';
+      });
       click('button[form="numeric-answer-form"]');
     } else {
       const answer = correct ? item.answer : (item.answer + 1) % 4;
@@ -1082,6 +1109,63 @@
     }
     await waitElement('.feedback');
   }
+
+  await test('五科可从普通练习挑选填空；英文自由作答与等值分数可批改、保存及复习', async () => {
+    for (const { id } of subjects) {
+      const preview = Learning.practicePool(Core.createState(), { subject: id, level: levels[id][0], format: 'fill' });
+      const mixed = Learning.practicePool(Core.createState(), { subject: id, level: levels[id][0], format: 'all' });
+      assert(preview.length > 0 && preview.every(item => item.fields), id);
+      assert(mixed.some(item => !item.fields) && mixed.some(item => item.fields), id);
+    }
+    await resetUi();
+    await openSubject('english');
+    change('format', 'fill');
+    change('difficulty', 'A1');
+    submitForm();
+    await waitElement('#numeric-0');
+    const item = current();
+    equal(item.format, 'fill');
+    click('button[form="numeric-answer-form"]');
+    assert(!element('#numeric-error').hidden);
+    equal(read().attempts.length, 0);
+    element('#numeric-0').value = '  ' + item.fields[0].expected.toUpperCase() + '  ';
+    click('button[form="numeric-answer-form"]');
+    await waitElement('.feedback');
+    equal(read().attempts[0].correct, true);
+    replayStorage(key);
+    equal(read().attempts[0].response, [item.fields[0].expected.toUpperCase()]);
+    click('[data-action="next"]');
+    await waitFor(() => current().id !== item.id, 'The next fill-in item did not load');
+    await answerUi(false);
+    const missed = current();
+    await go('mistakes', '.mistake-card');
+    assert(Core.getMistakes(read(), questions).some(entry => entry.question.id === missed.id));
+
+    const fraction = byId.get('fill-math-different-colours-1');
+    equal(Core.evaluateAnswer(fraction, ['8/15']).correct, true);
+    equal(Core.evaluateAnswer(fraction, ['1/0']), null);
+    equal(Core.evaluateAnswer(fraction, ['0.53']).correct, false);
+    const english = byId.get('fill-english-formal-word-form-10');
+    equal(Core.evaluateAnswer(english, ['ACKNOWLEDGEMENT']).correct, true);
+    await resetUi();
+    await openSubject('math');
+    click('[data-action="skip-placement"]');
+    change('topic', 'statistics');
+    change('difficulty', 'L5');
+    change('format', 'fill');
+    submitForm();
+    await waitElement('#numeric-0');
+    const [numerator, denominator] = current().fields[0].expected.split('/').map(Number);
+    element('#numeric-0').value = `${numerator * 2}/${denominator * 2}`;
+    click('button[form="numeric-answer-form"]');
+    await waitElement('.feedback');
+    equal(read().attempts[0].correct, true);
+    fitsViewport();
+    await resetUi();
+    await openSubject('english');
+    change('format', 'choice');
+    await resetUi();
+  });
 
   async function finishQuestions(shouldGetRight) {
     const initial = read().active;
