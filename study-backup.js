@@ -21,6 +21,16 @@
     return state;
   }
 
+  function practiceRecords(state) {
+    const answered = new Set(state.attempts.map(attempt => attempt.questionId));
+    return {
+      ...Core.createState(),
+      attempts: state.attempts,
+      sessions: state.sessions,
+      generated: state.generated.filter(spec => answered.has(AI.questionId(spec)))
+    };
+  }
+
   function merge(current, incoming, bank) {
     const generated = new Map(current.generated.map(spec => [AI.questionId(spec), spec]));
     for (const spec of incoming.generated) {
@@ -72,5 +82,5 @@
     }, bank);
   }
 
-  globalThis.EachVeyaBackup = { serialize, parse, merge };
+  globalThis.EachVeyaBackup = { serialize, parse, merge, practiceRecords };
 })();

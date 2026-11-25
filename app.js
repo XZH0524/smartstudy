@@ -9,6 +9,7 @@
   const StudyUI = globalThis.EachVeyaStudyUI;
   const Sound = globalThis.EachVeyaSound;
   const Backup = globalThis.EachVeyaBackup;
+  const Account = globalThis.EachVeyaAccount;
   const data = globalThis.SmartStudyData;
   const main = document.getElementById('main');
   const soundButton = document.getElementById('sound-toggle');
@@ -44,6 +45,7 @@
     currentUrl.hash = 'home';
     history.replaceState(history.state, '', currentUrl);
   }
+  const accountEnabled = Boolean(Account?.enabled && !testing);
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
   const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v6`, `${storagePrefix}.v5`, `${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
@@ -161,7 +163,50 @@
     aiLoading: ['正在生成和验算题目…', 'Generating and checking questions…'],
     aiLimit: ['AI 出题额度已用完。你仍可做题库练习。', 'The AI allowance has been used. Bank questions are still available.'],
     aiInvalid: ['本组题未通过验算或与旧题重复。请再试一次。', 'This set failed verification or repeated a previous question. Please try again.'],
-    aiFailure: ['暂时无法生成题目。请稍后重试，或开始题库练习。', 'Questions could not be generated. Try again later or practise from the question bank.']
+    aiFailure: ['暂时无法生成题目。请稍后重试，或开始题库练习。', 'Questions could not be generated. Try again later or practise from the question bank.'],
+    account: ['账号', 'Account'], accountLogin: ['登录测试账号', 'Sign in to a test account'],
+    accountSubtitle: ['本机测试。仅使用下方的测试邮箱或号码。验证码在启动窗口显示。', 'Local preview. Use the test email or number below. Codes appear in the server window.'],
+    accountContact: ['测试邮箱或 +86 号码', 'Test email or +86 number'], accountInvite: ['首次注册邀请码', 'Invitation code for first sign-in'],
+    accountCodes: ['可用 learner1@example.test、learner2@example.test 或演示号码 +8610000000001。', 'Use learner1@example.test, learner2@example.test or demo number +8610000000001.'],
+    accountSend: ['获取测试验证码', 'Get test code'], accountCode: ['六位验证码', 'Six-digit code'],
+    accountVerify: ['验证并登录', 'Verify and sign in'], accountRestart: ['重新获取验证码', 'Request another code'],
+    accountSent: ['凭证有效时，启动窗口会显示验证码。', 'The server window shows a code when the credentials are eligible.'],
+    accountFailed: ['无法完成操作。请检查测试凭证、邀请码或验证码。', 'The action could not be completed. Check the test identity, invitation or code.'],
+    accountRate: ['尝试次数过多，请稍后再试。', 'Too many attempts. Try again later.'],
+    accountLoadFailed: ['暂时无法恢复登录状态，可继续练习或重试。', 'Sign-in state could not be restored. You can keep practising or retry.'],
+    accountSignout: ['退出账号', 'Sign out'], accountFree: ['免费版', 'Free'], accountPlus: ['升级版试用', 'Plus trial'],
+    accountHelp: ['已提交的作答、错题、计划和设置可以同步到这个测试账号。新设备可以查看记录。本次练习的未提交进度保存在当前页面。', 'Submitted answers, mistakes, plans and settings sync to this test account. Pending practice stays on this page.'],
+    accountGuestTitle: ['带入游客作答', 'Bring over guest answers'],
+    accountGuestAvailable: ['当前浏览器有 {n} 次游客作答。确认后可把作答和已完成的练习复制到这个账号，游客记录仍保留。', 'This browser has {n} guest answers. Confirm to copy the answers and completed sets into this account. The guest copy stays in the browser.'],
+    accountGuestEmpty: ['这个网址在当前浏览器里没有游客作答。', 'No guest answers are saved for this address in this browser.'],
+    accountGuestUnavailable: ['暂时无法读取此浏览器里的游客记录。', 'Guest records in this browser could not be read.'],
+    accountGuestBackup: ['记录在原网址或其他浏览器？先在那里从「学习记录」导出备份，再在这里导入。', 'Are your answers on the original site or in another browser? Export a backup from Learning Records there, then import it here.'],
+    accountGuestBackupLink: ['打开备份与迁移', 'Open backup and migration'],
+    accountGuestConfirm: ['把 {n} 次游客作答带入当前账号？', 'Bring {n} guest answers into this account?'],
+    accountGuestConfirmInfo: ['请确认这是你自己的记录。系统会合并错题和作答，跳过重复记录，并沿用当前账号的计划和设置。', 'Confirm that these records are yours. The app merges answers and mistakes, skips duplicates, and keeps this account’s plan and settings.'],
+    accountGuestAction: ['复制到当前账号', 'Copy to this account'],
+    accountGuestBusy: ['正在导入游客作答…', 'Importing guest answers…'],
+    accountGuestDone: ['已导入 {n} 次新作答，可以到学习记录查看。', 'Imported {n} new answers. View them in Learning Records.'],
+    accountGuestAlready: ['这些作答已在当前账号中。', 'These answers are already in this account.'],
+    accountGuestError: ['导入结果暂时无法确认。原游客记录仍在，可以重试。', 'The import could not be confirmed. The guest records are still available. You can retry.'],
+    accountGuestConflict: ['有一组练习与账号里的记录冲突。账号和游客记录均已保留。', 'One practice set conflicts with records in this account. Both copies were kept.'],
+    accountSync: ['刷新或重试同步', 'Refresh or retry sync'], accountSyncing: ['正在同步…', 'Syncing…'], accountSaved: ['已同步到本机测试后台', 'Synced to the local test server'],
+    accountUnsaved: ['部分改动尚未同步。请重试，或先导出备份。', 'Some changes have not synced. Retry or export a backup first.'],
+    accountStale: ['其他会话已更新设置。作答已合并，请检查计划和偏好。', 'Another session changed the settings. Answers were merged. Check your plan and preferences.'],
+    accountLocal: ['测试账号 · {tier}', 'Test account · {tier}'],
+    accountImport: ['合并到测试账号？', 'Merge into the test account?'],
+    accountImportInfo: ['这份备份的有效记录会存入本机测试后台。请只导入允许在本机试用的数据。', 'Valid records from this backup will be stored in the local test server. Import only data you may use here.'],
+    accountImportDone: ['已合并 {n} 次新作答。请查看账号页的同步状态。', 'Merged {n} new answers. Check sync status on the Account page.'],
+    accountSignoutUnsaved: ['同步失败，退出会丢失本页尚未保存的改动。', 'Sync failed. Signing out will discard unsaved changes on this page.'],
+    accountReportSent: ['问题已发送到本机管理后台。', 'The issue was sent to the local admin portal.'],
+    accountReportFailed: ['问题清单已保存在学习记录中，暂时无法发送到后台。', 'The issue is saved in your learning records. The admin portal could not be reached.'],
+    aiPreview: ['本机模拟出题，每组 3 道 L1–L3 一元一次方程。题目会自动验算。', 'Local simulation for three L1–L3 linear equations, checked automatically.'],
+    aiMember: ['登录测试账号即可体验模拟出题。', 'Sign in with a test account to try simulated AI practice.'],
+    aiPlusOnly: ['当前账号可体验基础代数出题。科学组题与按错因出题需要升级版测试权限。', 'This account can try basic algebra generation. Science and mistake-based generation require a Plus trial.'],
+    aiPreviewAllowance: ['模拟生成上限为每天 {daily} 组、每月 {monthly} 组。审核题库优先。', 'Simulation allows up to {daily} new sets per day and {monthly} per month. Reviewed questions are used first.'],
+    previewVersion: ['本机验收', 'Local preview'],
+    aiPreviewBank: ['验收题 · 已验算', 'Preview item · Answer checked'],
+    sciencePreviewMode: ['模拟组题 · 已校验', 'Simulated set · Validated']
   };
   let storageIssue = '';
   let persistent = true;
@@ -182,6 +227,8 @@
   let roadmapSubject = '';
   let backupStatus = null;
   let questionClock = null;
+  let account = null;
+  let auth = { challenge: '', status: '', busy: false };
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
@@ -197,9 +244,13 @@
   const locale = () => state.language === 'zh' ? 'zh-CN' : 'en-GB';
   const study = StudyUI.create({ t, text, escapeHtml, button, heading, subjectName, selectField, locale, language: () => state.language });
 
+  function readGuestState() {
+    return Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEYS, bank);
+  }
+
   function loadState() {
     try {
-      const saved = Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEYS, bank);
+      const saved = readGuestState();
       storageIssue = '';
       persistent = true;
       return saved;
@@ -215,9 +266,18 @@
     byId = new Map(questions.map(question => [question.id, question]));
   }
   function commit(update) {
+    if (account) {
+      const previous = state;
+      setState(update(state));
+      if (Object.keys(state).some(key => key !== 'active' && state[key] !== previous[key])) {
+        account.pending = { ...state, active: null };
+        void flushAccount(account);
+      }
+      return;
+    }
     if (persistent) {
       try {
-        setState(Core.readState(localStorage, STORAGE_KEY, LEGACY_STORAGE_KEYS, bank));
+        setState(readGuestState());
       } catch (error) {
         persistent = false;
         storageIssue = error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
@@ -234,11 +294,13 @@
   }
   function updateStorageNotice() {
     const notice = document.getElementById('storage-notice');
-    notice.hidden = !storageIssue;
-    notice.innerHTML = storageIssue ? t(storageIssue) : '';
+    const message = account ? (account.error ? 'accountUnsaved' : '') : storageIssue;
+    notice.hidden = !message;
+    notice.innerHTML = message ? t(message) : '';
   }
   function route() {
     const value = location.hash.slice(1).split('/', 1)[0];
+    if (accountEnabled && value === 'account') return value;
     return ['home', 'practice', 'mistakes', 'result', 'records', 'coach', 'plan', 'report'].includes(value) ? value : 'home';
   }
   function go(page) {
@@ -264,7 +326,11 @@
     const count = Core.getMistakes(state, questions).length;
     const parent = ({ result: 'practice', coach: 'mistakes', report: 'records' })[page] || page;
     navigation.innerHTML = [['home', '⌂'], ['practice', '▤'], ['plan', '□'], ['mistakes', '▧'], ['records', '▥']].map(([id, icon]) => `<a class="nav-link ${parent === id ? 'active' : ''}" href="#${id}" ${page === id ? 'aria-current="page"' : ''}><span class="nav-icon" aria-hidden="true">${icon}</span><span>${t(id)}</span>${id === 'mistakes' && count ? `<span class="nav-count">${count}</span>` : ''}</a>`).join('');
-    document.getElementById('local-label').innerHTML = t('local');
+    document.getElementById('local-label').innerHTML = account ? t('accountLocal', { tier: copy[account.tier === 'plus' ? 'accountPlus' : 'accountFree'][chinese ? 0 : 1] }) : t('local');
+    if (accountEnabled) document.querySelector('.version').innerHTML = t('previewVersion');
+    const accountLink = document.getElementById('account-link');
+    accountLink.hidden = !accountEnabled;
+    accountLink.innerHTML = t(account ? 'account' : 'accountLogin');
     document.getElementById('footer').innerHTML = `${t('brand')} · ${t('disciplines')}`;
     document.getElementById('breadcrumb').innerHTML = `${brandName} &nbsp; / &nbsp; ${t(page)}`;
     document.title = `${t(page)} · ${t('brand')}`;
@@ -274,13 +340,182 @@
     }
     if (page === 'mistakes') main.innerHTML = renderMistakes();
     if (page === 'result') main.innerHTML = renderResult();
-    if (page === 'records') main.innerHTML = renderRecords();
+    if (page === 'records') {
+      main.innerHTML = renderRecords();
+      if (location.hash === '#records/backup') main.querySelector('.backup-panel').open = true;
+    }
     if (page === 'coach') main.innerHTML = study.renderCoach(state, questions, location.hash.split('/')[1]);
     if (page === 'plan') main.innerHTML = study.renderPlan(state, questions, roadmapSubject);
     if (page === 'report') main.innerHTML = study.renderReport(state, questions, reportDays);
+    if (page === 'account') main.innerHTML = renderAccount();
     for (const select of main.querySelectorAll('select[data-value]')) select.value = select.dataset.value;
     syncQuestionClock();
     updateStorageNotice();
+  }
+
+  function syncMessage() {
+    if (account.error) return 'accountUnsaved';
+    if (account.pending || account.flushing) return 'accountSyncing';
+    return account.stale ? 'accountStale' : 'accountSaved';
+  }
+
+  function showSync() {
+    const element = document.getElementById('account-sync-status');
+    if (account && element) element.innerHTML = t(syncMessage());
+    updateStorageNotice();
+  }
+
+  function renderAccount() {
+    if (account) {
+      let guestCount = null;
+      try { guestCount = readGuestState().attempts.length; }
+      catch (_) { /* Leave unreadable guest records in place. */ }
+      const guestMessage = guestCount === null ? 'accountGuestUnavailable' : guestCount ? 'accountGuestAvailable' : 'accountGuestEmpty';
+      const status = account.migrationStatus;
+      const disabled = account.migrating ? 'disabled' : '';
+      return `${heading(t('account'), t('accountHelp'))}
+        <section class="panel configuration">
+          <h2>${t(account.tier === 'plus' ? 'accountPlus' : 'accountFree')}</h2>
+          <p id="account-sync-status" role="status">${t(syncMessage())}</p>
+          <div class="inline-actions">${button(t('accountSync'), 'account-sync', 'secondary', disabled)}
+          ${button(t('accountSignout'), 'account-logout', 'secondary', disabled)}</div>
+        </section>
+        <section class="panel configuration" aria-labelledby="guest-records-title">
+          <h2 id="guest-records-title">${t('accountGuestTitle')}</h2>
+          <p>${t(guestMessage, { n: guestCount })}</p>
+          ${guestCount ? button(t('accountGuestAction'), 'account-migrate', '', disabled) : ''}
+          <p id="account-migration-status" tabindex="-1" role="status">${status ? t(status.key, status) : ''}</p>
+          <p>${t('accountGuestBackup')}</p><a href="#records/backup">${t('accountGuestBackupLink')}</a>
+        </section>`;
+    }
+    const form = auth.challenge ? `<label class="field"><span>${t('accountCode')}</span>
+      <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
+      <div class="inline-actions"><button type="submit" class="button" ${auth.busy ? 'disabled' : ''}>${t('accountVerify')}</button>
+      ${button(t('accountRestart'), 'account-restart', 'secondary', auth.busy ? 'disabled' : '')}</div>`
+      : `<label class="field"><span>${t('accountContact')}</span>
+      <input name="contact" type="text" autocomplete="off" autocapitalize="none" maxlength="160" required></label>
+      <label class="field"><span>${t('accountInvite')}</span><input name="invite" autocomplete="off" maxlength="64"></label>
+      <button type="submit" class="button" ${auth.busy ? 'disabled' : ''}>${t('accountSend')}</button>`;
+    return `${heading(t('accountLogin'), t('accountSubtitle'))}<form id="account-form" class="panel configuration">
+      <p>${t('accountCodes')}</p>${form}
+      <p role="status">${auth.status ? t(auth.status) : ''}</p></form>
+      ${auth.status === 'accountLoadFailed' ? button(t('accountSync'), 'account-sync', 'secondary') : ''}`;
+  }
+
+  async function flushAccount(sync) {
+    if (sync.flushing) return sync.flushing;
+    if (!sync.pending || account !== sync) return;
+    sync.error = false;
+    sync.flushing = (async () => {
+      while (sync.pending && account === sync) {
+        const pending = sync.pending;
+        sync.pending = null;
+        try {
+          const saved = await Account.request('/api/history', { owner: sync.id, revision: sync.revision, study: pending });
+          if (account !== sync) return;
+          if (saved.owner !== sync.id) throw new Error('account_changed');
+          sync.revision = saved.revision;
+          if (saved.stale) {
+            sync.stale = true;
+            // Preserve concurrent settings unless a newer edit explicitly changed them locally.
+            if (sync.pending) {
+              for (const key of ['language', 'plan', 'preferences']) {
+                if (sync.pending[key] === pending[key]) sync.pending[key] = saved.study[key];
+              }
+            }
+          }
+          if (!sync.pending) setState({ ...saved.study, active: state.active });
+        } catch (_) {
+          sync.pending ||= pending;
+          sync.error = true;
+          break;
+        }
+      }
+    })();
+    showSync();
+    try { await sync.flushing; }
+    finally { sync.flushing = null; if (account === sync) showSync(); }
+  }
+
+  async function openAccount(profile, prior = account) {
+    const saved = await Account.request('/api/history', undefined, profile.id);
+    if (account !== prior || saved.owner !== profile.id) throw new Error('account_changed');
+    if (prior && (prior.pending || prior.flushing || prior.migrating || prior.id !== profile.id || saved.revision < prior.revision)) throw new Error('account_changed');
+    cancelAiRequest();
+    account = { ...profile, revision: saved.revision, pending: null, flushing: null, error: false, stale: false,
+      migrating: false, migrationStatus: prior?.migrationStatus };
+    auth = { challenge: '', status: '', busy: false };
+    setState({ ...saved.study, active: prior ? state.active : null });
+    if (!prior) { selected = null; resultId = null; backupStatus = null; }
+    if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
+    render();
+  }
+
+  async function refreshAccount() {
+    const prior = account;
+    if (prior?.migrating) return;
+    try {
+      if (prior?.pending || prior?.flushing) await flushAccount(prior);
+      if (prior?.pending || account !== prior) return;
+      const profile = await Account.request('/api/session');
+      if (account === prior) await openAccount(profile, prior);
+    } catch (error) {
+      if (account !== prior) return;
+      if (prior) { prior.error = true; showSync(); }
+      else if (error.status !== 401) { auth.status = 'accountLoadFailed'; if (route() === 'account') render(); }
+    }
+  }
+
+  async function signOut() {
+    const prior = account;
+    if (!prior || prior.migrating) return;
+    await flushAccount(prior);
+    if (prior.pending && !await confirmAction('accountSignout', 'accountSignoutUnsaved', 'accountSignout')) return;
+    try {
+      await Account.request('/api/logout', {}, prior.id);
+    } catch (error) {
+      if (error.status !== 409) { announce(t('accountFailed')); return; }
+    }
+    if (account !== prior) return;
+    cancelAiRequest();
+    account = null;
+    setState(loadState());
+    selected = null;
+    resultId = null;
+    backupStatus = null;
+    if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
+    render();
+  }
+
+  async function migrateGuestAnswers() {
+    const owner = account;
+    if (!owner || owner.migrating) return;
+    let guest;
+    try { guest = readGuestState(); }
+    catch (_) { render(); return; }
+    const n = guest.attempts.length;
+    if (!n || !await confirmAction('accountGuestConfirm', 'accountGuestConfirmInfo', 'accountGuestAction', { n })) return;
+    if (account !== owner || owner.migrating) return;
+    owner.migrating = true;
+    owner.migrationStatus = { key: 'accountGuestBusy' };
+    render();
+    let imported = false;
+    try {
+      const { added, owner: savedOwner } = await Account.request('/api/history/import', { study: Backup.practiceRecords(guest) }, owner.id);
+      if (savedOwner !== owner.id || !Number.isSafeInteger(added) || added < 0) throw new Error('account_changed');
+      owner.migrationStatus = { key: added ? 'accountGuestDone' : 'accountGuestAlready', n: added };
+      imported = true;
+    } catch (error) {
+      owner.migrationStatus = { key: error.message === 'history_conflict' ? 'accountGuestConflict' : 'accountGuestError' };
+    } finally {
+      owner.migrating = false;
+    }
+    if (account !== owner) return;
+    if (imported) await refreshAccount();
+    if (route() === 'account') {
+      render();
+      document.getElementById('account-migration-status')?.focus();
+    }
   }
 
   function syncQuestionClock() {
@@ -328,7 +563,7 @@
       }).join('')}</div></section>
       <div class="lower-grid"><section class="panel"><div class="section-heading"><h2>${t('activity')}</h2><span class="section-note">${t('lastWeek')}</span></div><div class="week-chart">${days.map((day, index) => `<div class="chart-column ${index === 6 ? 'today' : ''}" aria-label="${escapeHtml(day.date.toLocaleDateString(locale()))} ${t('questionCount', { n: day.total })}"><span class="bar-number">${day.total}</span><span class="bar-space"><span class="bar" style="height:${Math.max(3, day.total / max * 100)}%"></span></span><span>${index === 6 ? t('today') : escapeHtml(day.date.toLocaleDateString(locale(), { weekday: 'short' }))}</span></div>`).join('')}</div></section>
       <section class="panel study-panel"><h2>${t('report')}</h2><p>${t('reportIntro')}</p><a class="button secondary" href="#report">${t('report')}</a></section></div>
-      <div class="reset-area"><button class="text-button" data-action="clear">${t('clearData')}</button></div>`;
+      ${account ? '' : `<div class="reset-area"><button class="text-button" data-action="clear">${t('clearData')}</button></div>`}`;
   }
 
   function selectField(id, label, options, selectedValue) {
@@ -377,7 +612,8 @@
   const aiConfig = document.querySelector('meta[name="eachveya-ai-endpoint"]');
   const aiEndpoint = () => aiConfig?.content.trim() || '';
   const aiRunsHere = () => !aiConfig?.dataset.origin || aiConfig.dataset.origin === location.origin;
-  const scienceAiEnabled = () => aiRunsHere() && Boolean(aiEndpoint()) && aiConfig?.dataset.scienceAi === 'enabled';
+  const canUseAi = () => !accountEnabled || Boolean(account);
+  const scienceAiEnabled = () => (!accountEnabled || account?.tier === 'plus') && aiRunsHere() && Boolean(aiEndpoint()) && aiConfig?.dataset.scienceAi === 'enabled';
 
   function scienceRequest() {
     const { subject, topic, curriculum = '' } = setup;
@@ -410,15 +646,16 @@
   function renderAiPanel() {
     const level = selectedAiLevel();
     const onlineOnly = aiEndpoint() && !aiRunsHere();
-    const enabled = Boolean(aiEndpoint() && !onlineOnly && level);
+    const enabled = Boolean(canUseAi() && aiEndpoint() && !onlineOnly && level);
     const recent = level && Core.getMistakes(state, questions).find(({ question, attempt }) =>
       question.topic === 'algebra' && Coach.mistakeFocus(question, attempt)
         && Date.parse(attempt.at) >= Date.now() - 14 * 86400000);
     const focus = recent && Coach.mistakeFocus(recent.question, recent.attempt);
-    const notice = !aiEndpoint() ? 'aiOffline' : !level ? 'aiSelection' : aiRequest ? 'aiLoading' : aiNotice;
+    const notice = !canUseAi() ? 'aiMember' : !aiEndpoint() ? 'aiOffline' : !level ? 'aiSelection' : aiRequest ? 'aiLoading' : aiNotice;
     const fallback = (onlineOnly || !aiEndpoint() || aiNotice) && !aiRequest ? aiFailedLevel || level : '';
     return `<section class="placement-panel ai-panel math-ai-panel" aria-labelledby="ai-heading">
-      <div><h3 id="ai-heading">${t('aiTitle')}</h3><p>${t('aiScope')}</p></div>
+      <div><h3 id="ai-heading">${t('aiTitle')}</h3><p>${t(accountEnabled ? 'aiPreview' : 'aiScope')}</p>
+        ${account?.aiAllowance ? `<p class="field-help">${t('aiPreviewAllowance', account.aiAllowance)}</p>` : ''}</div>
       ${level ? `<div class="ai-format-picker field">
         <label for="ai-format">${t('aiFormat')}</label>
         <select id="ai-format" data-value="${setup.aiFormat || 'mixed'}" ${aiRequest ? 'disabled' : ''}>
@@ -548,6 +785,7 @@
   }
 
   function modeLabel(mode) {
+    if (accountEnabled && mode === 'science-ai') return t('sciencePreviewMode');
     return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode', 'science-ai': 'scienceAiMode' })[mode] || mode);
   }
 
@@ -624,7 +862,7 @@
       </div>
       <section class="panel question-card">
         <div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${escapeHtml(question.level)}</span>
-          ${question.ai ? `<span class="tag">${t('aiGenerated')}</span>` : ''}
+          ${question.ai ? `<span class="tag">${t(accountEnabled ? 'aiPreviewBank' : 'aiGenerated')}</span>` : ''}
           ${question.ai || question.sample ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
@@ -717,10 +955,10 @@
     </div>`;
   }
 
-  function confirmAction(title, description, action) {
+  function confirmAction(title, description, action, values) {
     const dialog = document.getElementById('confirm-dialog');
     if (dialog.open) return Promise.resolve(false);
-    document.getElementById('dialog-title').innerHTML = t(title);
+    document.getElementById('dialog-title').innerHTML = t(title, values);
     document.getElementById('dialog-text').innerHTML = t(description);
     document.getElementById('dialog-cancel').innerHTML = t('cancel');
     document.getElementById('dialog-confirm').innerHTML = t(action);
@@ -766,7 +1004,7 @@
     const endpoint = aiEndpoint();
     const science = typeof level === 'object';
     const format = setup.aiFormat || 'mixed';
-    if (!endpoint || !aiRunsHere() || aiRequest || (science ? !level || !scienceAiEnabled() : !selectedAiLevel() || !AI.LEVELS.includes(level))) return;
+    if (!canUseAi() || !endpoint || !aiRunsHere() || aiRequest || (science ? !level || !scienceAiEnabled() : !selectedAiLevel() || !AI.LEVELS.includes(level))) return;
     const previousId = state.active?.id;
     const request = new AbortController();
     aiRequest = request;
@@ -781,13 +1019,16 @@
       if (aiRequest !== request) return;
       const payload = science ? level : { level, avoid: state.generated.filter(spec => spec.level === level && spec.source !== 'template').slice(-8).map(AI.signature) };
       timeout = setTimeout(() => request.abort(), 25000);
-      const response = await fetch(science ? new URL('/api/science', endpoint).href : endpoint, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        credentials: 'omit', signal: request.signal, body: JSON.stringify(payload)
+      const headers = { 'Content-Type': 'application/json' };
+      if (accountEnabled) Object.assign(headers, { 'X-EachVeya-Request': 'web-v1', 'X-EachVeya-Account': account.id });
+      const response = await fetch(science ? (accountEnabled ? '/api/ai/science' : new URL('/api/science', endpoint).href) : endpoint, {
+        method: 'POST', headers, credentials: accountEnabled ? 'same-origin' : 'omit',
+        signal: request.signal, body: JSON.stringify(payload)
       });
       if (aiRequest !== request) return;
       if (!response.ok) {
-        aiNotice = response.status === 429 ? 'aiLimit' : response.status === 422 ? 'aiInvalid' : 'aiFailure';
+        aiNotice = response.status === 429 ? 'aiLimit' : response.status === 422 ? 'aiInvalid'
+          : accountEnabled && response.status === 403 ? 'aiPlusOnly' : 'aiFailure';
         return;
       }
       const { questions: items, questionIds } = await response.json();
@@ -856,6 +1097,7 @@
 
   async function importBackup(file) {
     let incoming;
+    const owner = account;
     try {
       if (!file || file.size > 12 * 1024 * 1024) throw new Error('invalid_backup');
       incoming = Backup.parse(await file.text(), bank);
@@ -863,6 +1105,8 @@
       backupStatus = { key: 'backupInvalid' };
     }
     if (incoming) {
+      if (owner && !await confirmAction('accountImport', 'accountImportInfo', 'backupImport')) return;
+      if (owner !== account) return;
       let added = 0;
       try {
         commit(current => {
@@ -870,7 +1114,7 @@
           added = next.attempts.length - current.attempts.length;
           return next;
         });
-        backupStatus = persistent ? { key: 'backupDone', n: added } : { key: 'backupTemporary' };
+        backupStatus = owner ? { key: 'accountImportDone', n: added } : persistent ? { key: 'backupDone', n: added } : { key: 'backupTemporary' };
         selected = null;
         setup.level = setup.subject === 'english' ? state.preferences.englishLevel || 'auto' : setup.level;
       } catch (error) {
@@ -963,6 +1207,36 @@
       catch (_) { render(); reportSetupError(t('error')); }
       return;
     }
+    if (event.target.id === 'account-form') {
+      event.preventDefault();
+      if (!accountEnabled || account || auth.busy) return;
+      const form = new FormData(event.target);
+      auth.busy = true;
+      const submit = event.target.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      try {
+        if (auth.challenge) {
+          const profile = await Account.request('/api/verify-code', { challenge: auth.challenge, code: form.get('code') });
+          auth.challenge = '';
+          try { await openAccount(profile); }
+          catch (_) { auth.status = 'accountLoadFailed'; }
+        } else {
+          const contact = form.get('contact').trim();
+          const { challenge } = await Account.request('/api/request-code', {
+            method: contact.startsWith('+') ? 'sms' : 'email',
+            contact, invite: form.get('invite').trim()
+          });
+          auth.challenge = challenge;
+          auth.status = 'accountSent';
+        }
+      } catch (error) {
+        auth.status = error.status === 429 ? 'accountRate' : 'accountFailed';
+      } finally {
+        auth.busy = false;
+        if (route() === 'account') { render(); main.querySelector('input')?.focus(); }
+      }
+      return;
+    }
     if (event.target.id === 'plan-form') {
       event.preventDefault();
       const plan = Core.normalizePlan({ enabled: true, goal: document.getElementById('plan-goal').value,
@@ -991,6 +1265,10 @@
     if (!target || target.disabled) return;
     const action = target.dataset.action;
     try {
+      if (action === 'account-restart') { auth = { challenge: '', status: '', busy: false }; render(); main.querySelector('input')?.focus(); }
+      if (action === 'account-sync') await refreshAccount();
+      if (action === 'account-logout') await signOut();
+      if (action === 'account-migrate') await migrateGuestAnswers();
       if (action === 'choose') {
         selected = Number(target.dataset.choice);
         render();
@@ -1046,9 +1324,18 @@
         commit(current => Core.flagQuestion(current, byId.get(id), reason));
         render();
         const fresh = [...main.querySelectorAll('[data-action="flag-question"]')].find(item => item.dataset.id === id);
-        fresh.closest('.result-row > details').open = true;
-        fresh.focus();
-        announce(t('flagSaved'));
+        if (fresh) { fresh.closest('.result-row > details').open = true; fresh.focus(); }
+        let message = 'flagSaved';
+        const owner = account;
+        if (owner) {
+          try { await Account.request('/api/feedback', { reason, questionId: id }, owner.id); message = 'accountReportSent'; }
+          catch (_) { message = 'accountReportFailed'; }
+          if (account === owner) {
+            const status = fresh?.closest('.question-report')?.querySelector('[role="status"]');
+            if (status) status.innerHTML = t(message);
+          }
+        }
+        announce(t(message));
       }
       if (action === 'resume') { cancelAiRequest(); forceSetup = false; go('practice'); }
       if (action === 'setup') { forceSetup = true; go('practice'); }
@@ -1110,7 +1397,7 @@
         const ids = state.attempts.filter(attempt => attempt.sessionId === session.id && !attempt.correct).map(attempt => attempt.questionId);
         await begin({ subject: session.subject, ids, count: ids.length, mode: 'review' });
       }
-      if (action === 'clear' && await confirmAction('clearTitle', 'clearText', 'clear')) {
+      if (action === 'clear' && !account && await confirmAction('clearTitle', 'clearText', 'clear') && !account) {
         const language = state.language;
         commit(() => ({ ...Core.createState(), language }));
         selected = null;
@@ -1143,6 +1430,7 @@
   });
   document.addEventListener('visibilitychange', syncQuestionClock);
   window.addEventListener('storage', event => {
+    if (account) return;
     if (event.key !== STORAGE_KEY && !LEGACY_STORAGE_KEYS.includes(event.key) && event.key !== null) return;
     setState(loadState());
     if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
@@ -1151,6 +1439,14 @@
     announce(t('changed'));
   });
   render();
+  if (accountEnabled) {
+    void refreshAccount();
+    window.addEventListener('beforeunload', event => {
+      if (!account?.pending && !account?.flushing) return;
+      event.preventDefault();
+      event.returnValue = true;
+    });
+  }
   if (testing) {
     const script = document.createElement('script');
     script.src = 'tests.js?v=2.9';
