@@ -5,6 +5,7 @@
   const { skills } = globalThis.EachVeyaSkills;
   const Science = globalThis.EachVeyaScience;
   const { questions, topicsBySubject, levels } = globalThis.SmartStudyData;
+  const questionsById = new Map(questions.map(question => [question.id, question]));
   const intervals = [1, 3, 7, 14, 30];
   const defaultPlan = Object.freeze({ enabled: true, goal: 'all', topic: '', minutes: 8, deadline: '' });
   const reportWindows = [1, 7, 30, 90];
@@ -28,6 +29,7 @@
     }]));
     const attempts = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime());
     const firstAttempts = new Set();
+    const readPassages = new Set();
     const checks = new Map();
     const scienceIndependent = new Map();
     const lessonContexts = new Map();
@@ -46,10 +48,13 @@
         if (!question || question.retired || question.purpose === 'followup') continue;
         const fresh = !firstAttempts.has(question.id);
         firstAttempts.add(question.id);
+        const passage = Core.readingPassage(question);
+        const freshPassage = !passage || !readPassages.has(passage);
+        if (passage) readPassages.add(passage);
         const marks = attempt.focus ? [attempt.focus] : question.focus || [];
         if (fresh) for (const focus of marks) entries[focus].seen++;
         const likely = mistakeFocus(question, attempt);
-        if (fresh && question.purpose === 'lesson' && attempt.mode === 'practice' && attempt.correct && attempt.hinted === false) {
+        if (fresh && freshPassage && question.purpose === 'lesson' && attempt.mode === 'practice' && attempt.correct && attempt.hinted === false) {
           for (const focus of marks) {
             const contexts = lessonContexts.get(focus) || new Set();
             contexts.add(question.lessonGroup);
@@ -65,7 +70,7 @@
         }
         if (!attempt.correct && likely && (!attempt.focus || attempt.focus === likely) && !Core.focusModes.includes(attempt.mode)) {
           const entry = entries[likely];
-          if (question.purpose === 'lesson') {
+          if (Core.schedulesLessonCheck(question)) {
             if (entry.status === 'unassessed') entry.status = 'possible';
             continue;
           }
@@ -132,7 +137,9 @@
     if (!Object.hasOwn(skills, focus) || !Core.focusModes.includes(mode)) return [];
     const used = new Set(state.attempts.map(attempt => attempt.questionId));
     if (mode === 'spaced' && record?.lessonLevel) {
-      const reserved = questions.filter(q => !q.retired && q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus) && !used.has(q.id));
+      const usedPassages = new Set(state.attempts.map(attempt => Core.readingPassage(questionsById.get(attempt.questionId))).filter(Boolean));
+      const reserved = questions.filter(q => !q.retired && q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus)
+        && !used.has(q.id) && !usedPassages.has(Core.readingPassage(q)));
       if (reserved.length >= count) return reserved.slice(0, count).map(q => q.id);
       if (!Science.topics[focus]) return [];
     }
@@ -174,6 +181,7 @@
   function lessonHistory(state, byId, now) {
     const pending = new Map();
     const used = new Set();
+    const read = new Set();
     const results = [];
     const completed = new Map(state.sessions.map(session => [session.id, session.completedAt]));
     const attempts = Core.reportableAttempts(state).map(attempt => {
@@ -188,9 +196,11 @@
     }
     for (const { attempt, question, check, submitted, time } of attempts) {
       const date = new Date(time);
-      const fresh = !used.has(attempt.questionId);
+      const passage = Core.readingPassage(question);
+      const fresh = !used.has(attempt.questionId) && (!passage || !read.has(passage));
       used.add(attempt.questionId);
-      if (question?.purpose === 'lesson' && !question.retired && !attempt.correct) {
+      if (passage) read.add(passage);
+      if (Core.schedulesLessonCheck(question) && !question.retired && !attempt.correct) {
         const focus = mistakeFocus(question, attempt);
         if (focus) schedule(focus, question, date);
       } else if (check && fresh) {
@@ -208,22 +218,28 @@
         }
       }
     }
-    return { pending, used, results };
+    return { pending, used, read, results };
   }
 
   function lessonChecks(state, catalog, now = new Date()) {
     const byId = new Map(catalog.map(question => [question.id, question]));
-    const { pending, used } = lessonHistory(state, byId, now);
+    const { pending, used, read } = lessonHistory(state, byId, now);
     const today = dayAt(now);
     // A submitted but unfinished check may be resumed. Its question cannot be assigned to a second skill.
-    for (const attempt of state.attempts) if (Date.parse(attempt.at) <= now.getTime()) used.add(attempt.questionId);
+    for (const attempt of state.attempts) {
+      if (Date.parse(attempt.at) > now.getTime()) continue;
+      used.add(attempt.questionId);
+      const passage = Core.readingPassage(byId.get(attempt.questionId));
+      if (passage) read.add(passage);
+    }
     const active = state.active;
     const activeQuestion = active?.mode === 'spaced' ? byId.get(active.questionIds[0]) : null;
     if (activeQuestion?.purpose === 'followup') used.add(activeQuestion.id);
     return [...pending.values()].sort((a, b) => a.due.localeCompare(b.due)).map(({ focus, due, source }) => {
       const resume = activeQuestion?.purpose === 'followup' && active.focus === focus;
       const candidates = catalog.filter(q => !q.retired && q.purpose === 'followup' && q.level === source.level
-        && q.subject === source.subject && q.focus.includes(focus) && q.lessonGroup !== source.lessonGroup && !used.has(q.id));
+        && q.subject === source.subject && q.focus.includes(focus) && !used.has(q.id) && !read.has(Core.readingPassage(q))
+        && (!source.lessonGroup || q.lessonGroup !== source.lessonGroup));
       const matches = candidates.filter(q => source.stepMethod ? q.stepMethod === source.stepMethod
         : source.evidenceType ? q.evidenceType === source.evidenceType
         : source.equationStep && q.equationStep && Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
@@ -340,6 +356,7 @@
       }
     }
     const topics = Object.fromEntries(Object.entries(topicRows).map(([topic, attempts]) => [topic, counts(attempts)]));
+    topics.reading.passages = new Set(topicRows.reading.map(attempt => Core.readingPassage(byId.get(attempt.questionId)))).size;
     const daily = [];
     const step = length > 30 ? 7 : 1;
     for (let offset = 1 - length; offset <= 0; offset += step) {
@@ -418,7 +435,7 @@
       practisedSubjects.add(question.subject);
     }
     const choices = subjects.flatMap(subject => topicsBySubject[subject].filter(topic => !settings.topic || topic === settings.topic)
-      .map(topic => ({ subject, topic, practice: evidence.topics[topic].distinct, priority: priorities.has(topic) ? 0 : 1,
+      .map(topic => ({ subject, topic, practice: evidence.topics[topic].passages ?? evidence.topics[topic].distinct, priority: priorities.has(topic) ? 0 : 1,
         last: lastByTopic.get(topic) ?? -Infinity })))
       .sort((a, b) => a.priority - b.priority || a.practice - b.practice || a.last - b.last);
     const next = choices[0];

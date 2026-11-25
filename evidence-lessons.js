@@ -59,7 +59,7 @@
       /^(when|what time|on which day)\b/i.test(ask.en) ? 'time' : /^why\b/i.test(ask.en) ? 'reason' : 'detail';
     items.push({
       id: 'lesson-evidence-' + group + '-' + index, subject: 'english', topic: 'reading', track: 'cefr', level: 'A1',
-      focusOnly: true, lessonGroup: group, purpose, focus: ['text-evidence'],
+      focusOnly: true, lessonGroup: group, passageId: 'reading-' + group, purpose, focus: ['text-evidence'],
       prompt: bi(passage + '\n\n哪句原文能回答这个问题？' + ask.zh, passage + '\n\nWhich sentence answers this question? ' + ask.en),
       options: sentences.map(s => bi(s, s)), answer, evidenceQuote: sentences[answer], evidenceType,
       hint: bi('先找问题问的是人、地点、时间还是原因，再对照每句所说的事情。',
@@ -74,7 +74,11 @@
       const [passage, askEn] = source.prompt.en.split('\n\n');
       const askZh = source.prompt.zh.split('\n\n')[1];
       evidence(group, i, passage, bi(askZh, askEn), i, source.explanation);
-      source.evidenceQuote = items.at(-1).evidenceQuote;
+      const { evidenceQuote, evidenceType, focus } = items.at(-1);
+      Object.assign(source, {
+        evidenceQuote, evidenceType, focus, readingEvidence: true,
+        errors: Object.fromEntries(source.options.flatMap((_, index) => index === source.answer ? [] : [[index, 'text-evidence']]))
+      });
     });
   }
   evidence('posters', 0, 'Our class made two posters. Jo drew a tree on the first one. Lee hung the second one by the door. We took both down on Friday.',

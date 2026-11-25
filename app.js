@@ -29,7 +29,7 @@
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
   if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 2
-    || Core?.VERSION !== 8 || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
+    || Core?.VERSION !== 8 || !Core?.readingPassage || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -115,6 +115,7 @@
     recordSubtitle: ['按知识点查看练习起点、作答表现和最近两周的记录。', 'See practice levels, answers and the last two weeks of activity by topic.'],
     evidenceNote: ['数学练习推荐每次最多调整一级。通常根据 5 道不同题判断。L2 代数会核对三种方程结构。', 'Maths recommendations change by at most one level. Most topics use five distinct questions. L2 algebra checks three equation structures.'],
     equationEvidence: ['已独立答对 {independent}/{total} 类方程。升到 L3 需分别解对普通两步方程、带除法的方程和带括号的方程。', 'You solved {independent}/{total} equation types without hints. To reach L3, solve a two-step equation, an equation with division, and one with brackets.'],
+    readingEvidence: ['当前等级已积累 {n}/{total} 篇阅读样本。同一篇的首次作答用于推荐。', '{n}/{total} reading passages assessed at this level. Only the first answer per passage informs the recommendation.'],
     starting: ['练习起点 {level}', 'Starting level {level}'], diagnostic: ['起点测试推荐 {level}', 'Placement check suggests {level}'],
     practiceLevel: ['练习推荐 {level}', 'Practice recommendation {level}'],
     evidenceProgress: ['当前等级已积累 {n}/{total} 道有效练习题', '{n}/{total} eligible practice questions at this level'],
@@ -822,7 +823,7 @@
       ${profile?.lastBatch ? `<p class="field-help">${t('batchEvidence', profile.lastBatch)}</p>` : ''}
       ${profile?.lastBatch?.pacedRecheck ? `<p class="field-help">${t('paceRecheck')}</p>` : ''}
       ${profile?.equationEvidence && profile.evidence ? `<p class="field-help">${t('equationEvidence', profile.equationEvidence)}</p>`
-        : profile?.evidence ? `<p class="field-help">${t('evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
+        : profile?.evidence ? `<p class="field-help">${t(topic === 'reading' ? 'readingEvidence' : 'evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
       ${button(t('practiceTopic'), 'topic-practice', 'secondary', `data-subject="${subject}" data-topic="${topic}"`)}
     </article>`;
   }
@@ -882,7 +883,7 @@
     const score = graded ? Core.evaluateAnswer(question, answer) : null;
     const correct = score?.correct === true;
     const showGrade = graded && !delayedFeedback;
-    const guidedMiss = showGrade && !correct && ['lesson', 'followup'].includes(question.purpose);
+    const guidedMiss = showGrade && !correct && (Core.schedulesLessonCheck(question) || question.purpose === 'followup');
     const nextDay = guidedMiss ? Coach.lessonChecks(state, questions) : [];
     const done = Object.keys(session.answers).length;
     const total = session.questionIds.length;
@@ -999,7 +1000,7 @@
           <span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span>
           <details>
             <summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary>
-            ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : !attempt.correct && question.purpose === 'lesson' ? study.renderClue(question, attempt, nextDay) : ''}
+            ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : !attempt.correct && Core.schedulesLessonCheck(question) ? study.renderClue(question, attempt, nextDay) : ''}
             ${renderAnswerDetails(question, attempt)}
             ${question.retired ? '' : study.renderQuestionReport(question, state.flags.find(flag => flag.questionId === id))}
           </details>
@@ -1536,7 +1537,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.14';
+    script.src = 'tests.js?v=2.15';
     document.body.appendChild(script);
   }
 })();

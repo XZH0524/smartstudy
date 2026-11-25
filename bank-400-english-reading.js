@@ -7,7 +7,7 @@
       const [zh, en] = ask.split('|');
       add({ id: ['b400', 'english', 'r', slug, index+1].join('-'), subject: 'english', topic: 'reading', level,
         stem: article + '\n\n' + zh + '|' + article + '\n\n' + en,
-        choices, why });
+        passageId: 'reading-' + slug, choices, why });
     }
   }
 

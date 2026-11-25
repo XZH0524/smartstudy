@@ -49,6 +49,9 @@
   }
 
   const responseOf = attempt => attempt.response ?? attempt.choice;
+  const readingPassage = question => question?.subject === 'english' && question.topic === 'reading'
+    ? question.passageId || question.originalId || question.id : '';
+  const schedulesLessonCheck = question => question?.purpose === 'lesson' || question?.readingEvidence === true;
 
   function evaluateAnswer(question, response) {
     if (!question) return null;
@@ -348,6 +351,6 @@
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
     shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf, mistakeFocus,
     advanceSession, localDate, dailyStats,
-    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes
+    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage, schedulesLessonCheck
   };
 })();

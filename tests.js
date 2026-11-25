@@ -578,6 +578,32 @@
     assert(Learning.practicePool(state, { subject: 'english', topic: 'grammar', level: 'C2' }).every(q => q.level === 'C2'));
   });
 
+  await test('英语阅读按不同文章累计样本，同篇新题与专项变式只算首次作答', () => {
+    const samePassage = [...[1, 2, 3, 4].map(i => `b400-english-r-lost-cap-${i}`), 'lesson-evidence-lost-cap-3'];
+    equal(new Set(samePassage.map(id => Core.readingPassage(byId.get(id)))).size, 1);
+    const previous = answerPractice(Core.createState(), samePassage, Array(5).fill(true), knownTime);
+    const restored = Backup.parse(Backup.serialize(previous), questions);
+    equal(restored.attempts.map(({ questionId, correct }) => [questionId, correct]), previous.attempts.map(({ questionId, correct }) => [questionId, correct]));
+    equal(Learning.englishProfile(restored).reading.level, 'A1');
+    equal(Learning.englishProfile(restored).reading.evidence, 1);
+    const at = new Date(laterTime);
+    const report = Coach.report(restored, questions, 7, at);
+    equal(report.topics.reading.passages, 1);
+    equal(report.topics.reading.correct, 5);
+
+    const fresh = ['en-r01', 'en-r02', 'b400-english-r-library-card-2', 'b400-english-r-blue-route-4'];
+    const advanced = answerPractice(restored, fresh, [true, false, true, true], laterTime);
+    equal(Learning.englishProfile(advanced).reading.level, 'A2');
+    equal(Learning.englishProfile(advanced).grammar.level, 'A1');
+    equal(Learning.englishProfile(advanced).reading.lastBatch, { level: 'A1', correct: 4, independent: 4, total: 5 });
+    const requested = Learning.practiceIds(answerPractice(Core.createState(), samePassage.slice(0, 1), [true]),
+      { subject: 'english', topic: 'reading', level: 'A1' }, () => 0.5);
+    const passages = requested.map(id => Core.readingPassage(byId.get(id)));
+    equal(new Set(passages.slice(0, 6)).size, 6);
+    assert(!passages.slice(0, 6).includes('reading-lost-cap'));
+    assert(passages.includes('reading-lost-cap'));
+  });
+
   await test('英语近期错题触发对应知识点建议，订正后从建议移除', () => {
     const now = new Date(2026, 3, 4, 9);
     let state = answerPractice(Core.createState(), ['en-v01', 'en-v07', 'en-g01'], [false, false, false]);
@@ -1746,6 +1772,59 @@
     assert(element('.focus-result .mistake-clue').textContent.includes('谁做了这个动作'));
     await go('plan/checks', '#lesson-checks-title');
     assert(!document.querySelector('[data-action="lesson-check"]'));
+    await resetUi();
+  });
+
+  await test('普通阅读错题提供原文线索并安排不同文章，报告按篇显示样本', async () => {
+    await resetUi();
+    const q = byId.get('b400-english-r-lost-cap-4');
+    const known = 'b400-english-r-lost-cap-1';
+    const yesterday = new Date();
+    yesterday.setHours(12, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const at = yesterday.toISOString();
+    let state = answerPractice(Core.createState(), [known], [true], at);
+    state = start({ subject: 'english', ids: [q.id], count: 1 }, state);
+    Core.saveState(localStorage, key, state);
+    replayStorage(key);
+    await go('home', '[data-action="resume"]');
+    click('.today-plan [data-action="resume"]');
+    await waitElement('#question-title');
+    await answerUi(false);
+    assert(element('.feedback .mistake-clue').textContent.includes('谁做了这个动作'));
+    assert(!element('.feedback > details').open);
+    assert(!document.querySelector('.option.correct'));
+    const open = read();
+    assert(Coach.lessonChecks(open, questions).every(task => !task.ready));
+    let past = answerPractice(Core.createState(), [known, q.id], [true, false], at);
+    const [task] = Coach.lessonChecks(past, questions);
+    assert(task.ready && byId.get(task.id).evidenceType === 'person');
+    assert(Core.readingPassage(byId.get(task.id)) !== Core.readingPassage(q));
+
+    const candidate = byId.get(task.id);
+    const alias = { ...candidate, id: 'reading-already-practised', purpose: '' };
+    const extended = [...questions, alias];
+    past = Core.startSession(past, extended, { subject:'english', ids:[alias.id], count:1 });
+    past = Core.advanceSession(Core.gradeAnswer(past, extended, alias.answer, at), extended, at);
+    const [unread] = Coach.lessonChecks(past, extended);
+    assert(unread.ready && unread.id !== task.id);
+    assert(Core.readingPassage(byId.get(unread.id)) !== Core.readingPassage(alias));
+
+    Core.saveState(localStorage, key, answerPractice(Core.createState(), [known, q.id], [true, false], at));
+    replayStorage(key);
+    await go('report', '.report-map');
+    assert(element('.report-map').textContent.includes('1 篇不同文章，1/2 次答对'));
+    await go('plan/checks', '[data-lesson-focus="text-evidence"] [data-action="lesson-check"]');
+    click('[data-lesson-focus="text-evidence"] [data-action="lesson-check"]');
+    await waitElement('#question-title');
+    equal(current().id, task.id);
+    assert(!document.querySelector('[data-action="hint"]'));
+    await answerUi(true);
+    click('[data-action="next"]');
+    await waitElement('.focus-result');
+    assert(element('.focus-result').textContent.includes('本次新题答对了'));
+    await go('report', '.report-checks');
+    assert(element('.report-checks').textContent.includes('独立答对 1/1 次'));
     await resetUi();
   });
 

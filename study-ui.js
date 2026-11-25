@@ -98,6 +98,7 @@
     reportWeeklyActivity: ['每周作答量', 'Answers by week'], reportWeeklyAccuracy: ['每周作答正确率', 'Accuracy by week'],
     reportDate: ['日期', 'Date'], reportTable: ['查看图表数据', 'View chart data'],
     reportMap: ['知识点练习地图', 'Topic practice map'], reportEvidence: ['{n} 道不同题，{correct}/{total} 次答对', '{n} distinct questions, {correct}/{total} answers correct'],
+    reportReadingEvidence: ['{passages} 篇不同文章，{correct}/{total} 次答对', '{passages} different passages, {correct}/{total} answers correct'],
     reportSparse: ['样本较少', 'Small sample'], reportSkillNote: ['正确率描述本时段做过的题目。每个知识点同时显示题数。', 'Accuracy describes answers from this period. Each topic also shows the sample size.'],
     reportMistakes: ['常见错因线索', 'Common mistake patterns'],
     reportChecks: ['跨日复测表现', 'Next-day check results'],
@@ -138,7 +139,7 @@
 
     function renderClue(question, attempt, nextDay = []) {
       const focus = Coach.mistakeFocus(question, attempt);
-      const targeted = question.purpose === 'lesson' || question.purpose === 'followup';
+      const targeted = Core.schedulesLessonCheck(question) || question.purpose === 'followup';
       const task = targeted && nextDay.find(item => item.focus === focus);
       const schedule = task ? `<p class="field-help">${lessonStatus(task)} · <a href="#plan/checks">${t('lessonOpen')}</a></p>` : '';
       if (question.stepHints && focus) {
@@ -357,7 +358,8 @@
       const mastery = Object.fromEntries(Science.subjects.map(subject => [subject, Learning.subjectProfile(state, subject)]));
       const { recent, previous } = report;
       const seconds = Math.round(recent.durationMs / 1000);
-      const nextTopic = Object.entries(report.topics).filter(([, row]) => row.distinct >= 3).sort((a, b) => a[1].accuracy - b[1].accuracy)[0]?.[0];
+      const nextTopic = Object.entries(report.topics).filter(([, row]) => (row.passages ?? row.distinct) >= 3)
+        .sort((a, b) => a[1].accuracy - b[1].accuracy)[0]?.[0];
       const summary = (label, value, note = '') => `<div><dt>${t(label)}</dt><dd>${value}</dd>${note ? `<dd class="field-help">${note}</dd>` : ''}</div>`;
       return `${heading(t('report'), t('reportIntro'))}
         <div class="filters report-filters" role="group" aria-label="${t('reportFilters')}">${[[1, 'reportToday'], [7, 'reportWeek'], [30, 'reportMonth'], [90, 'reportQuarter']].map(([n, key]) =>
@@ -379,9 +381,9 @@
             const row = report.topics[id];
             const science = Science.topics[id];
             const verified = mastery[subject]?.[id]?.retained;
-            return `<li>${science ? `<span class="section-note">${text(science.domainLabel)}</span>` : ''}<strong>${text(topics[id])}</strong><span class="field-help">${row.total ? t('reportEvidence', { ...row, n: row.distinct }) : t('coachUntested')}</span>
+            return `<li>${science ? `<span class="section-note">${text(science.domainLabel)}</span>` : ''}<strong>${text(topics[id])}</strong><span class="field-help">${row.total ? t(id === 'reading' ? 'reportReadingEvidence' : 'reportEvidence', { ...row, n: row.distinct }) : t('coachUntested')}</span>
               ${science && (row.total || verified) ? `<span class="section-note">${verified ? t('scienceRetained', { level: verified }) : t('scienceUnverified')}</span>` : ''}
-              ${row.total && row.distinct < 3 ? `<span class="section-note">${t('reportSparse')}</span>` : ''}</li>`;
+              ${row.total && (row.passages ?? row.distinct) < 3 ? `<span class="section-note">${t('reportSparse')}</span>` : ''}</li>`;
           }).join('')}</ul></section>`).join('')}</div>
         </section>
         <div class="study-grid report-recommendations"><section class="panel study-panel"><h2>${t('reportMistakes')}</h2>

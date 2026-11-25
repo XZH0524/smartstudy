@@ -120,9 +120,15 @@
       seen: new Set(), samples: [], equations: new Map(), lastBatch: null
     }]));
     const cutoff = placement ? Date.parse(placement.completedAt) : -Infinity;
+    const seenPassages = new Set();
 
     for (const attempt of state.attempts) {
       const question = byId.get(attempt.questionId);
+      const passage = subject === 'english' ? Core.readingPassage(question) : '';
+      if (passage) {
+        if (seenPassages.has(passage)) continue;
+        seenPassages.add(passage);
+      }
       if (question?.subject !== subject || attempt.mode !== 'practice' || typeof attempt.hinted !== 'boolean'
         || question.diagnosticOnly || question.retired || Date.parse(attempt.at) < cutoff) continue;
       const profile = adjustments[question.topic];
@@ -190,17 +196,23 @@
       : Science.subjects.includes(options.subject) ? Core.getMistakes(state, pool).map(item => item.question.topic) : [];
     const orderedTopics = [...new Set([...ranked, ...topics])];
     const attempted = new Set(state.attempts.map(attempt => attempt.questionId));
+    const read = options.subject === 'english' ? new Set(state.attempts.map(attempt => Core.readingPassage(byId.get(attempt.questionId)))) : null;
     const ids = [];
 
     // Finish untried questions in the matching pool before repeating any.
     for (const repeat of [false, true]) {
       const queues = orderedTopics.map(topic => {
         const queue = Core.shuffled(pool.filter(question => question.topic === topic && attempted.has(question.id) === repeat), random);
-        if (topic !== 'algebra') return queue;
+        if (topic !== 'algebra' && topic !== 'reading') return queue;
         const first = new Map();
-        for (const item of queue) if (item.equationFamily && !first.has(item.equationFamily)) first.set(item.equationFamily, item);
-        const priority = new Set(first.values());
-        return [...priority, ...queue.filter(item => !priority.has(item))];
+        for (const item of queue) {
+          const group = item.equationFamily || Core.readingPassage(item);
+          if (group && !first.has(group)) first.set(group, item);
+        }
+        const priority = [...first.values()];
+        if (topic === 'reading') priority.sort((a, b) => Number(read.has(Core.readingPassage(a))) - Number(read.has(Core.readingPassage(b))));
+        const preferred = new Set(priority);
+        return [...priority, ...queue.filter(item => !preferred.has(item))];
       });
       const longest = Math.max(0, ...queues.map(queue => queue.length));
       for (let index = 0; index < longest; index++) {
