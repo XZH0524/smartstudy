@@ -10,12 +10,16 @@
     chemistry: 'massDensityLesson', biology: 'populationDensityLesson'
   };
 
-  function equation(group, index, a, b, x, context, purpose = 'lesson') {
+  function equation(group, index, a, b, x, context, purpose = 'lesson', presentation = '') {
     const spec = { level: 'L2', form: 'plain', a, b, c: 0, d: a * x + b, distractors: [x - 1, x + 1, x + 2] };
     const checked = AI.normalizeSpec(spec, 'L2');
     if (!checked) throw new Error('Invalid lesson equation');
     const q = decorateEquation(AI.makeQuestion({ ...checked, format: 'calculation' }), checked);
-    q.prompt = bi(context.zh + '\n' + q.prompt.zh, context.en + '\n' + q.prompt.en);
+    const displayedEquation = presentation === 'sides-swapped' ? `${spec.d} = ${a}x − ${Math.abs(b)}`
+      : presentation === 'constant-first' ? `${b} − ${Math.abs(a)}x = ${spec.d}` : '';
+    const contextualize = lang => context[lang] + '\n' + (displayedEquation ? q.prompt[lang].split('\n')[0] + '\n' + displayedEquation : q.prompt[lang]);
+    q.prompt = bi(contextualize('zh'), contextualize('en'));
+    if (presentation) q.equationPresentation = presentation;
     items.push({ ...q, ai: false, id: 'lesson-equation-' + group + '-' + index, lessonGroup: group, purpose, focusOnly: true });
   }
 
@@ -43,6 +47,10 @@
     ['garden', 8, 3, 7, '8 行幼苗，每行 x 株，再加上盆里的 3 株，共有 59 株。', 'Eight rows contain x seedlings each. With three more in a pot, there are 59 seedlings.'],
     ['chain', 9, -6, 5, '9 段铁链，每段 x 厘米。共剪掉 6 厘米后，总长为 39 厘米。', 'Nine pieces of chain are x cm each. After 6 cm is cut off in total, their length is 39 cm.']
   ]) equation(group, 0, a, b, x, bi(zh, en), 'followup');
+  equation('card-boxes', 0, 5, -4, 7, bi('5 盒卡片，每盒 x 张。送出 4 张后，还剩 31 张。',
+    'Five boxes contain x cards each. After four cards are given away, 31 cards remain.'), 'followup', 'sides-swapped');
+  equation('water-tank', 0, -4, 36, 5, bi('水箱原有 36 升水，取了 4 次，每次取 x 升，还剩 16 升。',
+    'A tank starts with 36 litres of water. Four draws of x litres each leave 16 litres.'), 'followup', 'constant-first');
 
   function evidence(group, index, passage, ask, answer, explanation, purpose = 'lesson') {
     const sentences = passage.match(/[^.!?]+[.!?]/g)?.map(s => s.trim());

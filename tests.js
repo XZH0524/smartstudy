@@ -445,12 +445,62 @@
   });
 
   await test('五道里四道独立答对只提升该领域一级', () => {
-    const state = answerPractice(Core.createState(), mathIds('algebra', 'L2'), [true, true, false, true, true]);
+    const state = answerPractice(Core.createState(), mathIds('functions', 'L2'), [true, true, false, true, true]);
     const profile = Learning.mathProfile(state);
-    equal(profile.algebra.level, 'L3');
-    equal(profile.algebra.basis, 'practice');
-    equal(profile.algebra.lastBatch.independent, 4);
+    equal(profile.functions.level, 'L3');
+    equal(profile.functions.basis, 'practice');
+    equal(profile.functions.lastBatch.independent, 4);
     equal(profile.geometry.level, 'L2');
+  });
+
+  await test('L2 代数同结构只算一份，三种结构均无提示答对才推荐 L3', () => {
+    const repeated = mathIds('algebra', 'L2');
+    const previous = answerPractice(Core.createState(), repeated, Array(5).fill(true), knownTime);
+    const restored = Backup.parse(Backup.serialize(previous), questions);
+    equal(restored.attempts.map(attempt => [attempt.questionId, attempt.correct]), previous.attempts.map(attempt => [attempt.questionId, attempt.correct]));
+    let profile = Learning.mathProfile(restored).algebra;
+    equal(profile.level, 'L2');
+    equal(profile.equationEvidence, { independent: 1, total: 3 });
+    equal(Learning.mathProfile(answerPractice(Core.createState(), repeated, Array(5).fill(false))).algebra.level, 'L2');
+
+    const [quotient, otherQuotient, grouped] = [7, 8, 9].map(n => `ma-pr-algebra-L2-${n}@2`);
+    let practice = answerPractice(restored, [quotient, grouped], ['hint', true]);
+    profile = Learning.mathProfile(practice).algebra;
+    equal(profile.level, 'L2');
+    equal(profile.equationEvidence, { independent: 2, total: 3 });
+    const reviewed = start({ ids: [otherQuotient], mode: 'review', count: 1 }, practice);
+    const reviewDone = Core.advanceSession(answerCurrent(reviewed, true, laterTime), questions, laterTime);
+    equal(Learning.mathProfile(reviewDone).algebra.level, 'L2');
+    practice = answerPractice(practice, [otherQuotient], [true]);
+    profile = Learning.mathProfile(practice).algebra;
+    equal(profile.level, 'L3');
+    equal(profile.lastBatch, { level: 'L2', correct: 3, independent: 3, total: 3 });
+    equal(Learning.mathProfile(practice).geometry.level, 'L2');
+    const candidates = Learning.practiceIds(restored, { subject: 'math', topic: 'algebra', level: 'auto' }, () => 0.5);
+    equal(new Set(candidates.slice(0, 3).map(id => byId.get(id).equationFamily)).size, 3);
+    assert(candidates.every(id => byId.get(id).level === 'L2' && !byId.get(id).retired));
+  });
+
+  await test('四道新版 L2 方程双语题干可代入验算，答案唯一且原版仍可读取', () => {
+    for (const n of [7, 8, 9, 10]) {
+      const id = `ma-pr-algebra-L2-${n}`;
+      const question = byId.get(id + '@2');
+      assert(byId.get(id).retired && question.originalId === id && !question.retired);
+      for (const lang of ['zh', 'en']) {
+        const prompt = question.prompt[lang];
+        const quotient = prompt.match(/x\/(\d+) ([+−]) (\d+) = (\d+)/);
+        const grouped = prompt.match(/(\d+)\(x ([+−]) (\d+)\) = (\d+)/);
+        const [, factor, sign, constant, right] = quotient || grouped;
+        const offset = Number(constant) * (sign === '+' ? 1 : -1);
+        const keys = question.options.flatMap((option, i) => {
+          const x = Number(option[lang]);
+          const lhs = quotient ? x / Number(factor) + offset : Number(factor) * (x + offset);
+          return lhs === Number(right) ? [i] : [];
+        });
+        equal(keys, [question.answer]);
+        equal(question.equationFamily, quotient ? 'quotient' : 'grouped');
+      }
+    }
   });
 
   await test('五道里最多答对两道才下降一级，且最低为 L1', () => {
@@ -638,14 +688,14 @@
   });
 
   await test('两道快速错答让系统多收集证据，慢答和已存历史不会因速度降级', () => {
-    const ids = mathIds('algebra', 'L2', 5);
+    const ids = mathIds('functions', 'L2', 5);
     let state = start({ ids, count: ids.length });
     ids.forEach((id, index) => {
       const question = byId.get(id);
       const choice = index === 0 ? question.answer : (question.answer + 1) % 4;
       state = Core.advanceSession(Core.gradeAnswer(state, questions, choice, knownTime, index < 3 ? 800 : 25_000), questions, knownTime);
     });
-    const row = Learning.mathProfile(Core.normalizeState(state, questions)).algebra;
+    const row = Learning.mathProfile(Core.normalizeState(state, questions)).functions;
     equal(row.level, 'L2');
     equal(row.lastBatch.pacedRecheck, true);
     equal(state.attempts[2].durationMs, 800);
@@ -1206,7 +1256,7 @@
     equal(document.querySelectorAll('.topic-record').length, 1);
     const algebra = element('.topic-record[data-topic="algebra"]');
     assert(algebra.textContent.includes('累计作答 2 次，答对 1 次'));
-    assert(algebra.textContent.includes('1/5 道有效练习题'));
+    assert(algebra.textContent.includes('已独立答对 0/3 类方程'));
     fitsViewport();
   });
 
@@ -1337,7 +1387,7 @@
       const followups = questions.filter(q => q.subject === subject && q.purpose === 'followup');
       equal(lesson.length, 12);
       equal(transfer.length, 2);
-      equal(followups.length, subject === 'english' ? 10 : 6);
+      equal(followups.length, subject === 'english' ? 10 : subject === 'math' ? 8 : 6);
       const contexts = new Set(lesson.map(q => q.lessonGroup));
       equal(contexts.size, 3);
       const seen = new Set();
@@ -1355,11 +1405,18 @@
       if (subject === 'english') equal(new Set(followups.map(q => q.evidenceType)).size, 5);
       for (const q of [...lesson, ...transfer, ...followups]) {
         if (subject === 'math') {
-          const match = q.prompt.en.match(/(\d+)x ([+−]) (\d+) = (\d+)$/);
-          assert(match, q.id);
-          const [, a, sign, b, d] = match;
-          const right = Number(d) - (sign === '+' ? Number(b) : -Number(b));
-          equal(q.fields.map(f => f.expected), [right, right / Number(a)]);
+          for (const lang of ['zh', 'en']) {
+            const line = q.prompt[lang].split('\n').at(-1);
+            const numbers = expression => expression.match(/-?[0-9]+/g).map(Number);
+            const form = line.replace(/\d+/g, '#');
+            const [first, second, third] = numbers(line);
+            const [a, b, d] = form === '# = #x − #' ? [second, -third, first]
+              : form === '# − #x = #' ? [-second, first, third]
+              : [first, form === '#x + # = #' ? second : -second, third];
+            assert(['# = #x − #', '# − #x = #', '#x + # = #', '#x − # = #'].includes(form), q.id);
+            equal(q.fields.map(f => f.expected), [d - b, (d - b) / a]);
+            equal(a * q.fields[1].expected + b, d);
+          }
         } else if (subject === 'english') {
           const passage = q.prompt.en.split('\n\n')[0];
           assert(q.options.every(opt => passage.includes(opt.en)));
@@ -1642,6 +1699,11 @@
     assert(nextDay.every(task => task.ready));
     assert(nextDay[0].id !== nextDay[1].id);
     const check = byId.get(nextDay[0].id);
+    equal(check.equationPresentation, 'sides-swapped');
+    const positive = finish(Core.createState(), 'lesson-equation-tickets-0', ['16', '5'], knownTime);
+    const positiveCheck = byId.get(Coach.lessonChecks(positive, questions, new Date(laterTime))[0].id);
+    equal(positiveCheck.equationPresentation, 'constant-first');
+    assert(positiveCheck.equationStep.coefficient < 0 && positiveCheck.focus.includes('balance'));
     const expected = check.fields.map(field => String(field.expected));
     assert(check.prompt.en !== question.prompt.en && check.lessonGroup !== question.lessonGroup && check.level === question.level);
     const premature = finish(state, check.id, expected, knownTime, 'balance');
@@ -1649,6 +1711,8 @@
     const passed = finish(state, check.id, expected, laterTime, 'balance');
     equal(Coach.lessonChecks(passed, questions, new Date(laterTime)).map(task => task.focus), ['coefficient']);
     equal(Coach.assessment(passed, questions, new Date(laterTime)).balance.status, 'possible');
+    equal(Learning.mathProfile(passed).algebra.level, 'L2');
+    equal(Coach.report(passed, questions, 7, new Date(laterTime)).checks[0].independent, 1);
     const retry = finish(state, check.id, [String(Number(expected[0]) + 1), expected[1]], laterTime, 'balance');
     const waiting = Coach.lessonChecks(retry, questions, new Date(laterTime)).find(task => task.focus === 'balance');
     equal(waiting.due, '2026-04-04');

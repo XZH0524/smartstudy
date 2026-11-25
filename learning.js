@@ -5,6 +5,7 @@
   const Science = globalThis.EachVeyaScience;
   const byId = new Map(questions.map(question => [question.id, question]));
   const EVIDENCE_COUNT = 5;
+  const L2_EQUATION_COUNT = 3;
   const ENGLISH_PLACEMENT_LEVELS = levels.english.slice(0, 4);
 
   function diagnosticIds(subject) {
@@ -116,7 +117,7 @@
     const adjustments = Object.fromEntries(topicsBySubject[subject].map(topic => [topic, {
       level: placement?.topics?.[topic]?.level ?? placement?.level ?? (subject === 'math' ? 'L2' : 'A1'),
       basis: placement ? 'diagnostic' : 'starting',
-      seen: new Set(), samples: [], lastBatch: null
+      seen: new Set(), samples: [], equations: new Map(), lastBatch: null
     }]));
     const cutoff = placement ? Date.parse(placement.completedAt) : -Infinity;
 
@@ -126,27 +127,41 @@
         || question.diagnosticOnly || question.retired || Date.parse(attempt.at) < cutoff) continue;
       const profile = adjustments[question.topic];
       if (question.level !== profile.level || profile.seen.has(question.id)) continue;
+      const byStructure = subject === 'math' && question.topic === 'algebra' && question.level === 'L2';
+      if (byStructure && !question.equationFamily) continue;
 
       profile.seen.add(question.id);
-      profile.samples.push(attempt);
-      if (profile.samples.length < EVIDENCE_COUNT) continue;
+      if (byStructure) profile.equations.set(question.equationFamily, attempt);
+      else profile.samples.push(attempt);
+      const batch = byStructure ? [...profile.equations.values()] : profile.samples;
+      const total = byStructure ? L2_EQUATION_COUNT : EVIDENCE_COUNT;
+      if (batch.length < total) continue;
 
-      const correct = profile.samples.filter(sample => sample.correct).length;
-      const independent = profile.samples.filter(sample => sample.correct && sample.hinted === false).length;
+      const correct = batch.filter(sample => sample.correct).length;
+      const independent = batch.filter(sample => sample.correct && sample.hinted === false).length;
       // Several very fast incorrect answers need more evidence before lowering a level.
-      const pacedRecheck = correct <= 2 && profile.samples.filter(sample => !sample.correct && sample.durationMs >= 20 && sample.durationMs < 2000).length >= 2;
-      const direction = independent >= 4 ? 1 : correct <= 2 && !pacedRecheck ? -1 : 0;
+      const lowAccuracy = correct <= (byStructure ? 0 : 2);
+      const pacedRecheck = lowAccuracy && batch.filter(sample => !sample.correct && sample.durationMs >= 20 && sample.durationMs < 2000).length >= 2;
+      const direction = independent >= (byStructure ? total : 4) ? 1 : lowAccuracy && !pacedRecheck ? -1 : 0;
       const index = tiers.indexOf(profile.level);
-      profile.lastBatch = { level: profile.level, correct, independent, total: EVIDENCE_COUNT };
+      profile.lastBatch = { level: profile.level, correct, independent, total };
       if (pacedRecheck) profile.lastBatch.pacedRecheck = true;
       profile.level = tiers[Math.max(0, Math.min(tiers.length - 1, index + direction))];
       profile.basis = 'practice';
       profile.samples = [];
+      if (direction !== 0) profile.equations.clear();
     }
 
-    return Object.fromEntries(Object.entries(adjustments).map(([topic, profile]) => [topic, {
-      level: profile.level, basis: profile.basis, evidence: profile.samples.length, lastBatch: profile.lastBatch
-    }]));
+    return Object.fromEntries(Object.entries(adjustments).map(([topic, profile]) => {
+      const byStructure = subject === 'math' && topic === 'algebra' && profile.level === 'L2';
+      const evidence = byStructure ? profile.equations.size : profile.samples.length;
+      const equationEvidence = byStructure ? {
+        independent: [...profile.equations.values()].filter(sample => sample.correct && sample.hinted === false).length,
+        total: L2_EQUATION_COUNT
+      } : null;
+      return [topic, { level: profile.level, basis: profile.basis, evidence, lastBatch: profile.lastBatch,
+        ...(equationEvidence ? { equationEvidence } : {}) }];
+    }));
   }
 
   function englishRecommendations(state, now = new Date()) {
@@ -179,8 +194,14 @@
 
     // Finish untried questions in the matching pool before repeating any.
     for (const repeat of [false, true]) {
-      const queues = orderedTopics.map(topic =>
-        Core.shuffled(pool.filter(question => question.topic === topic && attempted.has(question.id) === repeat), random));
+      const queues = orderedTopics.map(topic => {
+        const queue = Core.shuffled(pool.filter(question => question.topic === topic && attempted.has(question.id) === repeat), random);
+        if (topic !== 'algebra') return queue;
+        const first = new Map();
+        for (const item of queue) if (item.equationFamily && !first.has(item.equationFamily)) first.set(item.equationFamily, item);
+        const priority = new Set(first.values());
+        return [...priority, ...queue.filter(item => !priority.has(item))];
+      });
       const longest = Math.max(0, ...queues.map(queue => queue.length));
       for (let index = 0; index < longest; index++) {
         for (const queue of queues) {

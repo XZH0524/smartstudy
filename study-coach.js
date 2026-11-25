@@ -224,10 +224,11 @@
       const resume = activeQuestion?.purpose === 'followup' && active.focus === focus;
       const candidates = catalog.filter(q => !q.retired && q.purpose === 'followup' && q.level === source.level
         && q.subject === source.subject && q.focus.includes(focus) && q.lessonGroup !== source.lessonGroup && !used.has(q.id));
-      const preferred = candidates.find(q => source.stepMethod ? q.stepMethod === source.stepMethod
+      const matches = candidates.filter(q => source.stepMethod ? q.stepMethod === source.stepMethod
         : source.evidenceType ? q.evidenceType === source.evidenceType
         : source.equationStep && q.equationStep && Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
-      const id = resume ? activeQuestion.id : (preferred || candidates[0])?.id;
+      const changedPresentation = matches.find(q => q.equationPresentation && q.equationPresentation !== source.equationPresentation);
+      const id = resume ? activeQuestion.id : (changedPresentation || matches[0] || candidates[0])?.id;
       if (id && due <= today) used.add(id);
       return { focus, due, id, ready: Boolean(id && due <= today), resume };
     });

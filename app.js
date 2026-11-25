@@ -28,7 +28,7 @@
   const workshopSubjects = new Set(data?.questions?.filter(question => !question.retired && question.purpose === 'followup').map(question => question.subject));
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
-  if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 1
+  if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 2
     || Core?.VERSION !== 8 || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
@@ -113,7 +113,8 @@
     recommendation: ['推荐练习', 'Suggested practice'], englishWeakness: ['近 14 天有 {n} 道待复习错题', '{n} unresolved mistakes from the last 14 days'],
     practiceTopic: ['练这个知识点', 'Practise this topic'], recordTitle: ['学习记录', 'Learning progress'],
     recordSubtitle: ['按知识点查看练习起点、作答表现和最近两周的记录。', 'See practice levels, answers and the last two weeks of activity by topic.'],
-    evidenceNote: ['同领域、同等级积累 5 道不同练习题后，最多调整一级。正确率和是否用了提示都会纳入判断。', 'Suggested levels move by at most one tier after five distinct questions at the same topic and level. Accuracy and hint use both count.'],
+    evidenceNote: ['数学练习推荐每次最多调整一级。通常根据 5 道不同题判断。L2 代数会核对三种方程结构。', 'Maths recommendations change by at most one level. Most topics use five distinct questions. L2 algebra checks three equation structures.'],
+    equationEvidence: ['已独立答对 {independent}/{total} 类方程。升到 L3 需分别解对普通两步方程、带除法的方程和带括号的方程。', 'You solved {independent}/{total} equation types without hints. To reach L3, solve a two-step equation, an equation with division, and one with brackets.'],
     starting: ['练习起点 {level}', 'Starting level {level}'], diagnostic: ['起点测试推荐 {level}', 'Placement check suggests {level}'],
     practiceLevel: ['练习推荐 {level}', 'Practice recommendation {level}'],
     evidenceProgress: ['当前等级已积累 {n}/{total} 道有效练习题', '{n}/{total} eligible practice questions at this level'],
@@ -820,7 +821,8 @@
       <dl class="record-periods">${period('recentPeriod', row.recent)}${period('earlierPeriod', row.previous)}</dl>
       ${profile?.lastBatch ? `<p class="field-help">${t('batchEvidence', profile.lastBatch)}</p>` : ''}
       ${profile?.lastBatch?.pacedRecheck ? `<p class="field-help">${t('paceRecheck')}</p>` : ''}
-      ${profile?.evidence ? `<p class="field-help">${t('evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
+      ${profile?.equationEvidence && profile.evidence ? `<p class="field-help">${t('equationEvidence', profile.equationEvidence)}</p>`
+        : profile?.evidence ? `<p class="field-help">${t('evidenceProgress', { n: profile.evidence, total: Learning.EVIDENCE_COUNT })}</p>` : ''}
       ${button(t('practiceTopic'), 'topic-practice', 'secondary', `data-subject="${subject}" data-topic="${topic}"`)}
     </article>`;
   }
@@ -1534,7 +1536,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.13';
+    script.src = 'tests.js?v=2.14';
     document.body.appendChild(script);
   }
 })();
