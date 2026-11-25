@@ -171,35 +171,50 @@
 
   const mistakeFocus = Core.mistakeFocus;
 
-  function lessonChecks(state, catalog, now = new Date()) {
-    const byId = new Map(catalog.map(question => [question.id, question]));
+  function lessonHistory(state, byId, now) {
     const pending = new Map();
     const used = new Set();
-    const today = dayAt(now);
-    const attempts = Core.reportableAttempts(state).filter(attempt => Date.parse(attempt.at) <= now.getTime())
-      .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    const results = [];
+    const completed = new Map(state.sessions.map(session => [session.id, session.completedAt]));
+    const attempts = Core.reportableAttempts(state).map(attempt => {
+      const question = byId.get(attempt.questionId);
+      const check = question?.purpose === 'followup' && attempt.mode === 'spaced';
+      const submitted = Date.parse(attempt.at);
+      const time = check ? Math.max(submitted, Date.parse(completed.get(attempt.sessionId))) : submitted;
+      return { attempt, question, check, submitted, time };
+    }).filter(item => item.time <= now.getTime()).sort((a, b) => a.time - b.time);
     function schedule(focus, question, date) {
       if (!pending.has(focus)) pending.set(focus, { focus, source: question, due: dayAt(date, 1) });
     }
-    for (const attempt of attempts) {
-      const question = byId.get(attempt.questionId);
-      const date = new Date(attempt.at);
+    for (const { attempt, question, check, submitted, time } of attempts) {
+      const date = new Date(time);
       const fresh = !used.has(attempt.questionId);
       used.add(attempt.questionId);
       if (question?.purpose === 'lesson' && !attempt.correct) {
         const focus = mistakeFocus(question, attempt);
         if (focus) schedule(focus, question, date);
-      } else if (question?.purpose === 'followup' && attempt.mode === 'spaced' && fresh) {
+      } else if (check && fresh) {
         const task = pending.get(attempt.focus);
-        if (!task || task.due > dayAt(date)) continue;
+        if (!task || task.due > dayAt(new Date(submitted)) || question.level !== task.source.level
+          || question.subject !== task.source.subject || question.lessonGroup === task.source.lessonGroup
+          || !question.focus.includes(attempt.focus)) continue;
+        const independent = attempt.correct && attempt.hinted === false;
+        results.push({ focus: attempt.focus, date: dayAt(date), independent });
         pending.delete(attempt.focus);
-        if (!attempt.correct || attempt.hinted !== false) {
+        if (!independent) {
           schedule(attempt.focus, question, date);
           const step = mistakeFocus(question, attempt);
           if (step && step !== attempt.focus) schedule(step, question, date);
         }
       }
     }
+    return { pending, used, results };
+  }
+
+  function lessonChecks(state, catalog, now = new Date()) {
+    const byId = new Map(catalog.map(question => [question.id, question]));
+    const { pending, used } = lessonHistory(state, byId, now);
+    const today = dayAt(now);
     // A submitted but unfinished check may be resumed. Its question cannot be assigned to a second skill.
     for (const attempt of state.attempts) if (Date.parse(attempt.at) <= now.getTime()) used.add(attempt.questionId);
     const active = state.active;
@@ -209,7 +224,8 @@
       const resume = activeQuestion?.purpose === 'followup' && active.focus === focus;
       const candidates = catalog.filter(q => q.purpose === 'followup' && q.level === source.level
         && q.subject === source.subject && q.focus.includes(focus) && q.lessonGroup !== source.lessonGroup && !used.has(q.id));
-      const preferred = candidates.find(q => source.evidenceType ? q.evidenceType === source.evidenceType
+      const preferred = candidates.find(q => source.stepMethod ? q.stepMethod === source.stepMethod
+        : source.evidenceType ? q.evidenceType === source.evidenceType
         : source.equationStep && q.equationStep && Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
       const id = resume ? activeQuestion.id : (preferred || candidates[0])?.id;
       if (id && due <= today) used.add(id);
@@ -332,8 +348,14 @@
       for (let day = offset; day <= end; day++) period.push(...(byDay.get(dayAt(now, day)) || []));
       daily.push({ date, end: dayAt(now, end), ...counts(period) });
     }
+    const checks = new Map();
+    for (const { focus, date, independent } of lessonHistory(state, byId, now).results) {
+      if (date < start) continue;
+      const row = checks.get(focus) || { focus, total: 0, independent: 0 };
+      checks.set(focus, { ...row, last: date, total: row.total + 1, independent: row.independent + Number(independent) });
+    }
     return {
-      recent: counts(recent), previous: counts(previous), topics, daily,
+      recent: counts(recent), previous: counts(previous), topics, daily, checks: [...checks.values()].sort((a, b) => b.last.localeCompare(a.last)),
       errors: [...errors.values()].map(({ focus, attempts, questions, kinds }) => ({ focus, attempts,
         distinct: questions.size, kinds: [...kinds].sort((a, b) => b[1] - a[1]) }))
         .sort((a, b) => b.distinct - a.distinct || b.attempts - a.attempts)

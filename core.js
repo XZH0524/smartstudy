@@ -65,7 +65,7 @@
 
   function mistakeFocus(question, attempt) {
     if (attempt.correct) return '';
-    if (question.speedSteps) return evaluateAnswer(question, responseOf(attempt))?.correct === false ? 'average-speed' : '';
+    if (question.stepHints) return evaluateAnswer(question, responseOf(attempt))?.correct === false ? question.focus[0] : '';
     const step = question.equationStep;
     if (step && question.format === 'calculation') {
       const marks = evaluateAnswer(question, responseOf(attempt))?.marks;

@@ -10,16 +10,16 @@
   const copy = {
     evidenceLessons: ['三题专项试练', 'Three-question workshops'],
     lessonReview: ['本组题已通过程序检查，仍待独立教师复核。发现问题可在练习结果中报错。', 'These questions have passed automated checks and await independent teacher review. Flag an issue from your results.'],
-    equationLesson: ['分两步解方程 · L2', 'Two-step equations · L2'],
-    readingLesson: ['找到支持答案的原句 · A1', 'Find the supporting sentence · A1'],
+    equationLesson: ['数学 · 分两步解方程 · L2', 'Maths · Two-step equations · L2'],
+    readingLesson: ['英语 · 阅读找依据 · A1', 'English · Find the supporting sentence · A1'],
     speedLesson: ['物理 · 平均速率 · L2', 'Physics · Average speed · L2'],
+    massDensityLesson: ['化学 · 质量密度 · L2', 'Chemistry · Mass density · L2'],
+    populationDensityLesson: ['生物 · 种群计数密度 · L2', 'Biology · Population count density · L2'],
     originalEvidence: ['原文依据', 'Evidence in the passage'],
     stepHint: ['这一步的提示', 'Hint for this step'],
     stepSubtract: ['第一步先消掉左边的 +{n}。等式两边都减 {n}，再算右边的 {expression}。', 'First undo +{n} on the left. Subtract {n} from both sides, then work out {expression} on the right.'],
     stepAdd: ['第一步先消掉左边的 −{n}。等式两边都加 {n}，再算右边的 {expression}。', 'First undo −{n} on the left. Add {n} to both sides, then work out {expression} on the right.'],
     stepDivide: ['中间值算对了。现在两边同时除以 x 的系数 {n}，再算 {expression}。', 'Your intermediate value is correct. Divide both sides by the coefficient {n}, then work out {expression}.'],
-    speedTime: ['计时从出发到结束。把两段行进的秒数和中间停留的秒数都加起来。', 'The clock runs from start to finish. Add both moving times and the time spent stopped.'],
-    speedRate: ['总用时已经算对。用总路程（米）除以这个总用时（秒），得到每秒走了多少米。', 'Your elapsed time is correct. Divide the total distance in metres by that time in seconds to get metres per second.'],
     cluePerson: ['先找问题说的动作，再看原文里谁做了这个动作。', 'Find the action in the question, then look for who actually does it in the passage.'],
     cluePlace: ['先圈出问题里要找的人或物，再找同一句里的地点。只提到地点的句子还不够。', 'Find the person or thing from the question and the place in the same sentence. A place alone is not enough.'],
     clueTime: ['先找问题问的那件事，再检查同一句中的时间。文中其他事情的时间容易混淆。', 'Find the event from the question, then check its time in the same sentence. Other events may have their own times.'],
@@ -33,6 +33,7 @@
     lessonReady: ['新题已可以做', 'Your new question is ready'],
     lessonUnavailable: ['这个专项暂时没有未做过的新题。', 'There are no unseen check questions left for this workshop.'],
     lessonPassed: ['本次新题答对了。', 'You answered this new question correctly.'],
+    lessonHinted: ['这次用了提示。隔天可以独立做一道新题。', 'You used a hint. Try another new question on your own the next day.'],
     lessonRetry: ['先看这一步的提示，隔天再用一道新题试试。', 'Review the hint for this step and try another new question the next day.'],
     lessonOpen: ['查看跨日复测', 'View next-day checks'],
     coach: ['分步辅导', 'Step-by-step guidance'],
@@ -99,6 +100,8 @@
     reportMap: ['知识点练习地图', 'Topic practice map'], reportEvidence: ['{n} 道不同题，{correct}/{total} 次答对', '{n} distinct questions, {correct}/{total} answers correct'],
     reportSparse: ['样本较少', 'Small sample'], reportSkillNote: ['正确率描述本时段做过的题目。每个知识点同时显示题数。', 'Accuracy describes answers from this period. Each topic also shows the sample size.'],
     reportMistakes: ['常见错因线索', 'Common mistake patterns'],
+    reportChecks: ['跨日复测表现', 'Next-day check results'],
+    reportCheckStat: ['独立答对 {independent}/{total} 次 · 最近 {date}', '{independent}/{total} checks correct without hints · Latest {date}'],
     reportMistakeCount: ['{attempts} 次线索，来自 {distinct} 道不同题', '{attempts} clues across {distinct} distinct questions'],
     reportMistakeKind: ['{kind} · {n} 次', '{kind} · {n} times'],
     reportNext: ['下一步', 'Suggested next step'], reportNextTopic: ['试练「{topic}」', 'Try “{topic}”'],
@@ -138,9 +141,9 @@
       const targeted = question.purpose === 'lesson' || question.purpose === 'followup';
       const task = targeted && nextDay.find(item => item.focus === focus);
       const schedule = task ? `<p class="field-help">${lessonStatus(task)} · <a href="#plan/checks">${t('lessonOpen')}</a></p>` : '';
-      if (question.speedSteps && focus) {
+      if (question.stepHints && focus) {
         const marks = Core.evaluateAnswer(question, Core.responseOf(attempt)).marks;
-        return `<div class="mistake-clue"><p><strong>${t('stepHint')}</strong> ${t(marks[0] ? 'speedRate' : 'speedTime')}</p>${schedule}
+        return `<div class="mistake-clue"><p><strong>${t('stepHint')}</strong> ${text(question.stepHints[marks.indexOf(false)])}</p>${schedule}
           ${linkToCoach(focus, t('coachJump'))}</div>`;
       }
       if (question.fields) {
@@ -205,7 +208,8 @@
         const answer = state.attempts.find(attempt => attempt.sessionId === session.id && attempt.questionId === checkQuestion.id);
         return `<section class="panel study-panel focus-result"><h2>${t('lessonCheck')}</h2>
           ${answer && !answer.correct ? renderClue(checkQuestion, answer, tasks) : ''}
-          <p>${t(session.correct ? 'lessonPassed' : task?.id ? 'lessonRetry' : 'lessonUnavailable')}</p>
+          <p>${t(session.correct && answer?.hinted === false ? 'lessonPassed'
+            : task?.id ? session.correct ? 'lessonHinted' : 'lessonRetry' : 'lessonUnavailable')}</p>
           <a href="#plan/checks">${t('lessonOpen')}</a></section>`;
       }
       const record = Coach.assessment(state, catalog, new Date(session.completedAt))[session.focus];
@@ -366,6 +370,10 @@
           <p class="field-help">${recent.total && previous.total ? t('reportDelta', { ...recent, previousCorrect: previous.correct, previousTotal: previous.total }) : t('reportNoComparison')}</p>
         </section>
         ${recent.total ? renderCharts(report.daily, days === 90) : ''}
+        ${report.checks.length ? `<section class="panel study-panel report-checks"><h2>${t('reportChecks')}</h2>
+          <ul class="study-skill-list">${report.checks.map(row => `<li><span class="section-note">${subjectName(skills[row.focus].subject)}</span>
+            <a href="${coachUrl(row.focus)}">${text(skills[row.focus].label)}</a>
+            <span class="field-help">${t('reportCheckStat', { ...row, date: formatDate(row.last) })}</span></li>`).join('')}</ul></section>` : ''}
         <section class="panel study-panel report-map"><h2>${t('reportMap')}</h2><p class="field-help">${t('reportSkillNote')}</p>
           <div class="study-grid">${Object.entries(topicsBySubject).map(([subject, ids]) => `<section><h3>${subjectName(subject)}</h3><ul class="study-skill-list">${ids.map(id => {
             const row = report.topics[id];

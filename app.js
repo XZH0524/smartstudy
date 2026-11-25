@@ -24,7 +24,10 @@
   }
   const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
     !available || practiceCounts.get(id) >= 400);
-  if (!completeBank || !Lessons?.workshops || !data.questions.some(question => question.speedSteps && question.purpose === 'followup')
+  const workshopSubjects = new Set(data?.questions?.filter(question => question.purpose === 'followup').map(question => question.subject));
+  const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
+    !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
+  if (!completeBank || !completeWorkshops
     || Core?.VERSION !== 8 || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
@@ -723,6 +726,9 @@
         ${english ? `<div class="filters study-tracks">${[['cefr', 'cefrTrack'], ['ielts', 'ieltsTrack']].map(([id, label]) =>
           `<button type="button" class="filter-button ${id === track ? 'active' : ''}" data-action="track" data-track="${id}" aria-pressed="${id === track}">${t(label)}</button>`).join('')}</div>` : ''}
         ${showIELTS ? renderIELTS() : renderPlacementPanel(subject, placement, firstVisit)}
+        ${!showIELTS && !curriculum ? `<div class="inline-actions">
+          ${button(t(Lessons.workshops[subject]), 'lesson', 'secondary', `data-subject="${subject}"`)}
+        </div>` : ''}
         ${showPractice ? `
           ${english ? renderEnglishSuggestions() : ''}
           ${science ? selectField('curriculum', t('scienceScope'), courseOptions, curriculum) : ''}
@@ -848,7 +854,7 @@
     const score = graded ? Core.evaluateAnswer(question, answer) : null;
     const correct = score?.correct === true;
     const showGrade = graded && !delayedFeedback;
-    const guidedMiss = showGrade && !correct && question.purpose === 'lesson';
+    const guidedMiss = showGrade && !correct && ['lesson', 'followup'].includes(question.purpose);
     const nextDay = guidedMiss ? Coach.lessonChecks(state, questions) : [];
     const done = Object.keys(session.answers).length;
     const total = session.questionIds.length;
@@ -1504,7 +1510,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.11';
+    script.src = 'tests.js?v=2.12';
     document.body.appendChild(script);
   }
 })();

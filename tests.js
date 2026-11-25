@@ -1297,8 +1297,10 @@
     await resetUi();
   });
 
-  await test('三科专项的答案可独立核对，练习和保留的跨日题使用不同材料', () => {
-    for (const subject of ['math', 'english', 'physics']) {
+  await test('五科专项双语题目可独立验算，练习和跨日题分开', () => {
+    const subjectsWithLessons = Object.keys(globalThis.EachVeyaLessons.workshops);
+    equal(subjectsWithLessons.sort(), subjects.map(item => item.id).sort());
+    for (const subject of subjectsWithLessons) {
       const lesson = questions.filter(q => q.subject === subject && q.purpose === 'lesson');
       const transfer = questions.filter(q => q.subject === subject && q.purpose === 'transfer');
       const followups = questions.filter(q => q.subject === subject && q.purpose === 'followup');
@@ -1331,7 +1333,7 @@
           const passage = q.prompt.en.split('\n\n')[0];
           assert(q.options.every(opt => passage.includes(opt.en)));
           equal(q.options[q.answer].en, q.evidenceQuote);
-        } else {
+        } else if (subject === 'physics') {
           const numbers = lang => Array.from(q.prompt[lang].matchAll(/\d+/g), match => Number(match[0]));
           const [first, stop, last, distance] = numbers('en');
           const time = first + stop + last;
@@ -1339,9 +1341,88 @@
           equal(q.fields.map(field => field.expected), [time, distance / time]);
           assert(stop > 0 && Number.isInteger(distance / time) && time !== distance / time);
           assert(q.fields[0].label.en.endsWith('□ s') && q.fields[1].label.en.endsWith('□ m/s'));
+        } else {
+          const numbers = lang => Array.from(q.prompt[lang].matchAll(/\d+/g), match => Number(match[0]));
+          equal(numbers('zh'), numbers('en'));
+          const [first, second, numerator] = numbers('en');
+          const intermediate = q.stepMethod === 'sum' ? first + second : q.stepMethod === 'product' ? first * second : Math.abs(first - second);
+          assert(intermediate > 0 && Number.isInteger(numerator / intermediate), q.id);
+          equal(q.fields.map(field => field.expected), [intermediate, numerator / intermediate]);
+          const unit = subject === 'chemistry' ? ['cm³', 'g/cm³'] : ['m²', 'm⁻²'];
+          assert(q.fields.every((field, index) => ['zh', 'en'].every(lang => field.label[lang].endsWith('□ ' + unit[index]))));
+          assert(q.stepHints.every(hint => hint.zh && hint.en));
         }
       }
     }
+  });
+
+  await test('化学和生物可从科目页进入专项，错因提示和隔天复测匹配原步骤', async () => {
+    for (const [subject, focus, wrongStep, hint] of [
+      ['chemistry', 'mass-density', 0, '两个读数的差'], ['biology', 'population-density', 1, '总株数除以实际调查面积']
+    ]) {
+      await resetUi();
+      await openSubject(subject);
+      click(`#practice-form [data-action="lesson"][data-subject="${subject}"]`);
+      await waitElement('#numeric-answer-form');
+      const q = current();
+      const response = q.fields.map((field, index) => String(field.expected + Number(index === wrongStep)));
+      response.forEach((value, index) => { element(`#numeric-${index}`).value = value; });
+      click('button[form="numeric-answer-form"]');
+      assert(element('.feedback .mistake-clue').textContent.includes(hint));
+      assert(!element('.feedback > details').open);
+      assert(element('.feedback a[href="#coach/' + focus + '"]'));
+      assert(!document.querySelector('.feedback [data-action="lesson-check"]'));
+
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const at = yesterday.toISOString();
+      const open = start({ subject, ids: [q.id], count: 1 });
+      const history = Core.advanceSession(Core.gradeAnswer(open, questions, response, at), questions, at);
+      Core.saveState(localStorage, key, history);
+      replayStorage(key);
+      await go('plan/checks', `[data-lesson-focus="${focus}"]`);
+      click(`[data-lesson-focus="${focus}"] [data-action="lesson-check"]`);
+      await waitElement('#numeric-answer-form');
+      const fresh = current();
+      assert(fresh.purpose === 'followup' && fresh.stepMethod === q.stepMethod && fresh.level === q.level && fresh.prompt.en !== q.prompt.en);
+      await answerUi(true);
+      assert(!document.querySelector('.feedback .answer-line'));
+      click('[data-action="next"]');
+      await waitElement('.focus-result');
+      await go('report', '.report-checks');
+      assert(element('.report-checks').textContent.includes('独立答对 1/1 次'));
+      assert(element(`.report-checks a[href="#coach/${focus}"]`));
+      fitsViewport();
+    }
+    await resetUi();
+  });
+
+  await test('复测报告仅计入合格且已结束的场次，按完成日期和独立答对统计', () => {
+    const focus = 'mass-density';
+    const first = byId.get('lesson-mass-density-difference-0');
+    const makeRun = (state, question, checking) => start({ subject:'chemistry', ids:[question.id], count:1,
+      ...(checking ? { mode:'spaced', focus } : {}) }, state);
+    const submit = (state, question, at, miss = false) => Core.gradeAnswer(state, questions,
+      question.fields.map((field, i) => String(field.expected + Number(miss && i === 0))), at);
+    const doneAt = new Date(2026, 3, 4, 0, 1);
+    const answerTime = new Date(2026, 3, 3, 23, 59).toISOString();
+    const dayAfter = new Date(2026, 3, 5, 9);
+    let state = Core.advanceSession(submit(makeRun(Core.createState(), first), first, knownTime, true), questions, knownTime);
+    const [task] = Coach.lessonChecks(state, questions, new Date(laterTime));
+    const item = byId.get(task.id);
+    const early = Core.advanceSession(submit(makeRun(state, item, true), item, knownTime), questions, laterTime);
+    equal(Coach.report(early, questions, 7, doneAt).checks, []);
+    state = submit(makeRun(state, item, true), item, answerTime, true);
+    equal(Coach.report(state, questions, 7, doneAt).checks, []);
+    state = Core.advanceSession(state, questions, doneAt.toISOString());
+    equal(Coach.report(state, questions, 7, new Date(answerTime)).checks, []);
+    equal(Coach.report(state, questions, 1, doneAt).checks, [{ focus, total: 1, independent: 0, last: '2026-04-04' }]);
+    const [retry] = Coach.lessonChecks(state, questions, dayAfter);
+    assert(retry.ready && retry.id !== task.id && retry.due === '2026-04-05');
+    const next = byId.get(retry.id);
+    state = Core.advanceSession(submit(makeRun(state, next, true), next, dayAfter.toISOString()), questions, dayAfter.toISOString());
+    equal(Coach.report(state, questions, 7, dayAfter).checks, [{ focus, total: 2, independent: 1, last: '2026-04-05' }]);
+    equal(Coach.report(state, questions, 1, dayAfter).checks, [{ focus, total: 1, independent: 1, last: '2026-04-05' }]);
   });
 
   await test('物理专项分别提示漏计停留和求速率，隔日独立答对只清除本次任务', async () => {

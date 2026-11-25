@@ -5,7 +5,10 @@
   const { decorateEquation } = globalThis.EachVeyaSkills;
   const byId = new Map(questions.map(q => [q.id, q]));
   const items = [];
-  const workshops = { math: 'equationLesson', english: 'readingLesson', physics: 'speedLesson' };
+  const workshops = {
+    math: 'equationLesson', english: 'readingLesson', physics: 'speedLesson',
+    chemistry: 'massDensityLesson', biology: 'populationDensityLesson'
+  };
 
   function equation(group, index, a, b, x, context, purpose = 'lesson') {
     const spec = { level: 'L2', form: 'plain', a, b, c: 0, d: a * x + b, distractors: [x - 1, x + 1, x + 2] };
@@ -93,24 +96,30 @@
       '米娜的纸船是什么颜色的？', 'What colour is Mina’s boat?', 2, '第三句同时提到 Mina 和蓝色纸船。', 'The third sentence mentions both Mina and the blue boat.']
   ]) evidence(group, 0, passage, bi(zh, en), answer, bi(whyZh, whyEn), 'followup');
 
+  function calculation(subject, topic, group, index, purpose, prompt, fields, stepHints, explanation, stepMethod) {
+    items.push({
+      id: 'lesson-' + (subject === 'physics' ? 'speed' : topic) + '-' + group + '-' + index,
+      subject, topic, level: 'L2', skill: 'calculation', curriculumRefs: [], focusOnly: true, lessonGroup: group,
+      purpose, focus: [topic], format: 'calculation', prompt, fields, stepHints, hint: stepHints[0], explanation, stepMethod
+    });
+  }
+
   function averageSpeed(group, index, context, [first, stop, last, speed], purpose = 'lesson') {
     const total = first + stop + last;
     const distance = total * speed;
-    items.push({
-      id: 'lesson-speed-' + group + '-' + index, subject: 'physics', topic: 'average-speed', level: 'L2',
-      skill: 'calculation', curriculumRefs: [],
-      focusOnly: true, lessonGroup: group, purpose, focus: ['average-speed'], speedSteps: true, format: 'calculation',
-      prompt: bi(`${context.zh}，先移动 ${first} 秒，停留 ${stop} 秒，再移动 ${last} 秒。全程走过 ${distance} 米。求从出发到结束的总用时和平均速率。`,
-        `${context.en} moves for ${first} s, stops for ${stop} s and then moves for ${last} s. It covers ${distance} m in all. Find the total elapsed time and the average speed from start to finish.`),
-      fields: [
-        { label: bi('第 1 步 · 总用时 = □ s', 'Step 1 · Total elapsed time = □ s'), expected: total },
-        { label: bi('第 2 步 · 平均速率 = □ m/s', 'Step 2 · Average speed = □ m/s'), expected: speed }
-      ],
-      hint: bi('把行进和停留的时间都计入总用时，再用总路程除以总用时。',
-        'Include both moving time and stopped time, then divide the total distance by the total elapsed time.'),
-      explanation: bi(`总用时为 ${first} + ${stop} + ${last} = ${total} 秒。平均速率为 ${distance} ÷ ${total} = ${speed} m/s。`,
-        `The total elapsed time is ${first} + ${stop} + ${last} = ${total} s. The average speed is ${distance} ÷ ${total} = ${speed} m/s.`)
-    });
+    const prompt = bi(`${context.zh}，先移动 ${first} 秒，停留 ${stop} 秒，再移动 ${last} 秒。全程走过 ${distance} 米。求从出发到结束的总用时和平均速率。`,
+      `${context.en} moves for ${first} s, stops for ${stop} s and then moves for ${last} s. It covers ${distance} m in all. Find the total elapsed time and the average speed from start to finish.`);
+    const explanation = bi(`总用时为 ${first} + ${stop} + ${last} = ${total} 秒。平均速率为 ${distance} ÷ ${total} = ${speed} m/s。`,
+        `The total elapsed time is ${first} + ${stop} + ${last} = ${total} s. The average speed is ${distance} ÷ ${total} = ${speed} m/s.`);
+    calculation('physics', 'average-speed', group, index, purpose, prompt, [
+      { label: bi('第 1 步 · 总用时 = □ s', 'Step 1 · Total elapsed time = □ s'), expected: total },
+      { label: bi('第 2 步 · 平均速率 = □ m/s', 'Step 2 · Average speed = □ m/s'), expected: speed }
+    ], [
+      bi('计时从出发到结束。把两段行进的秒数和中间停留的秒数都加起来。',
+        'The clock runs from start to finish. Add both moving times and the time spent stopped.'),
+      bi('总用时已经算对。用总路程（米）除以这个总用时（秒），得到每秒走了多少米。',
+        'Your elapsed time is correct. Divide the total distance in metres by that time in seconds to get metres per second.')
+    ], explanation);
   }
 
   for (const [group, context, rows] of [
@@ -129,6 +138,80 @@
     ['dog', '一只狗沿草地上的小径奔跑', 'A dog on a path through a field', [9, 3, 13, 4]],
     ['robot-cart', '一辆仓库搬运机器人沿通道行驶', 'A warehouse robot along an aisle', [12, 7, 10, 1]]
   ]) averageSpeed(group, 0, bi(zh, en), row, purpose || 'followup');
+
+  const operations = {
+    sum: { solve: (a, b) => a + b, symbol: '+' },
+    difference: { solve: (a, b) => a - b, symbol: '−' },
+    product: { solve: (a, b) => a * b, symbol: '×' }
+  };
+
+  function densityPractice(subject, topic, units, labels, finalHint, families) {
+    const [firstUnit, numeratorUnit, answerUnit] = units;
+    const unitsForInput = [firstUnit, answerUnit];
+    for (const { method, stem, hint, lessons, followups, transfer } of families) {
+      const { solve, symbol } = operations[method];
+      const add = (group, index, [a, b, rate], purpose) => {
+        const intermediate = solve(a, b);
+        const numerator = intermediate * rate;
+        const prompt = stem(a, b, numerator);
+        const explanation = bi(`${labels[0].zh}为 ${a} ${symbol} ${b} = ${intermediate} ${firstUnit}。${labels[1].zh}为 ${numerator} ÷ ${intermediate} = ${rate} ${answerUnit}。`,
+          `${labels[0].en}: ${a} ${symbol} ${b} = ${intermediate} ${firstUnit}. ${labels[1].en}: ${numerator}${numeratorUnit} ÷ ${intermediate} ${firstUnit} = ${rate} ${answerUnit}.`);
+        const fields = labels.map((label, i) => ({
+          label: bi(`第 ${i + 1} 步 · ${label.zh} = □ ${unitsForInput[i]}`, `Step ${i + 1} · ${label.en} = □ ${unitsForInput[i]}`),
+          expected: i === 0 ? intermediate : rate
+        }));
+        calculation(subject, topic, group, index, purpose, prompt, fields, [hint, finalHint], explanation, method);
+      };
+      lessons.forEach((row, i) => add(method, i, row, 'lesson'));
+      followups.forEach((row, i) => add(`${method}-check-${i + 1}`, 0, row, 'followup'));
+      if (transfer) add(`${method}-transfer`, 0, transfer, 'transfer');
+    }
+  }
+
+  densityPractice('chemistry', 'mass-density', ['cm³', ' g', 'g/cm³'], [bi('样品体积', 'Sample volume'), bi('质量密度', 'Mass density')],
+    bi('体积已经算对。用样品质量除以样品体积，确认单位是 g/cm³。', 'Your volume is correct. Divide the sample mass by its volume to get g/cm³.'), [
+    { method: 'difference', stem: (after, before, mass) => bi(
+      `一份模拟测量记录显示：样品完全浸没前读数为 ${before} mL，浸没后为 ${after} mL。样品质量为 ${mass} g。求样品体积和质量密度。1 mL = 1 cm³。`,
+      `A simulated measurement reads ${before} mL before a sample is fully submerged and ${after} mL afterward. The sample mass is ${mass} g. Find its volume and mass density. 1 mL = 1 cm³.`),
+      hint: bi('取浸没后和浸没前两个读数的差。两次读数都包含原来的液体。', 'Subtract the initial reading from the final reading. Both readings include the original liquid.'),
+      lessons: [[18, 12, 2], [27, 19, 3], [38, 23, 4], [33, 21, 2]],
+      followups: [[31, 20, 3], [48, 32, 2]], transfer: [53, 39, 5] },
+    { method: 'product', stem: (base, height, mass) => bi(
+      `一块均匀的柱形样品底面积为 ${base} cm²，高 ${height} cm，质量为 ${mass} g。求样品体积和质量密度。`,
+      `A uniform prism has a base area of ${base} cm², a height of ${height} cm and a mass of ${mass} g. Find its volume and mass density.`),
+      hint: bi('用底面积乘以高。面积用 cm²，高用 cm，相乘得 cm³。', 'Multiply the base area by the height. Multiplying cm² by cm gives cm³.'),
+      lessons: [[5, 3, 2], [6, 4, 3], [8, 2, 4], [9, 3, 2]],
+      followups: [[7, 4, 2], [11, 3, 3]] },
+    { method: 'sum', stem: (first, second, mass) => bi(
+      `同一种均匀材料制成的两块样品，体积分别为 ${first} cm³ 和 ${second} cm³，总质量为 ${mass} g。求两块的总体积和这种材料的质量密度。`,
+      `Two pieces of the same uniform material have volumes of ${first} cm³ and ${second} cm³, with a combined mass of ${mass} g. Find their combined volume and the material's mass density.`),
+      hint: bi('题目给的是两块的总质量，所以先把两块样品的体积相加。', 'The mass covers both pieces, so add both volumes before dividing.'),
+      lessons: [[4, 9, 2], [8, 9, 3], [7, 13, 4], [14, 8, 2]],
+      followups: [[12, 11, 2], [16, 10, 3]], transfer: [17, 13, 4] }
+  ]);
+
+  densityPractice('biology', 'population-density', ['m²', '', 'm⁻²'], [bi('实际调查面积', 'Surveyed area'), bi('样本中的计数密度', 'Count density in the sample')],
+    bi('调查面积已经算对。用在这些样方里数到的总株数除以实际调查面积，得到每平方米的株数。',
+      'Your surveyed area is correct. Divide the total plants counted in those plots by their total area to get plants per square metre.'), [
+    { method: 'sum', stem: (first, second, count) => bi(
+      `在两个互不重叠的样方中统计三叶草。样方面积分别为 ${first} m² 和 ${second} m²，合计数到 ${count} 株。求实际调查面积和样本中的计数密度。`,
+      `Two non-overlapping plots of ${first} m² and ${second} m² contain ${count} clover plants in total. Find the surveyed area and the count density in the sample.`),
+      hint: bi('把两个互不重叠的样方面积相加，得到总株数所对应的面积。', 'Add the areas of the two non-overlapping plots to match the combined count.'),
+      lessons: [[2, 5, 3], [3, 6, 4], [7, 4, 2], [5, 8, 3]],
+      followups: [[6, 9, 3], [7, 10, 4]] },
+    { method: 'product', stem: (plots, area, count) => bi(
+      `调查者查看 ${plots} 个不重叠的样方，每个样方 ${area} m²，共数到 ${count} 株蒲公英。求实际调查面积和样本中的计数密度。`,
+      `A survey covers ${plots} non-overlapping plots, each ${area} m², with ${count} dandelion plants counted in total. Find the surveyed area and the count density in the sample.`),
+      hint: bi('每个样方一样大。用样方个数乘以单个样方的面积。', 'The plots have equal areas. Multiply the number of plots by the area of one plot.'),
+      lessons: [[3, 2, 3], [4, 2, 4], [3, 4, 2], [5, 3, 3]],
+      followups: [[4, 5, 2], [5, 4, 3]], transfer: [6, 2, 4] },
+    { method: 'difference', stem: (whole, skipped, count) => bi(
+      `一片 ${whole} m² 的草地内，有 ${skipped} m² 未调查。调查者只在其余部分共数到 ${count} 株车前草。求实际调查面积和样本中的计数密度。`,
+      `In a ${whole} m² field, ${skipped} m² was left unsurveyed. The survey counted ${count} plantain plants in the remaining area. Find the surveyed area and the count density in the sample.`),
+      hint: bi('只使用数过植株的那部分面积。从整片面积中减去未调查的面积。', 'Use only the area where plants were counted. Subtract the area that was left unsurveyed.'),
+      lessons: [[16, 4, 2], [23, 7, 3], [24, 9, 2], [27, 6, 4]],
+      followups: [[31, 11, 2], [35, 12, 3]], transfer: [39, 12, 4] }
+  ]);
   questions.push(...items);
 
   function roundIds(state, subject) {
