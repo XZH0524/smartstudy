@@ -608,6 +608,37 @@
     assert(passages.includes('reading-lost-cap'));
   });
 
+  await test('同篇文章的复习、专项或旧作答不会占用当前等级的有效阅读练习', () => {
+    const [first, second] = ['b400-english-r-lost-cap-1', 'b400-english-r-lost-cap-2'];
+    const works = ['lesson-evidence-lost-cap-3', first];
+    for (const [id, mode] of [[first, 'review'], [works[0], 'practice']]) {
+      let state = Core.startSession(Core.createState(), questions, { subject: 'english', ids: [id], mode, count: 1 });
+      state = Core.advanceSession(Core.gradeAnswer(state, questions, byId.get(id).answer, knownTime), questions, knownTime);
+      state = answerPractice(state, [second], [true], laterTime);
+      equal(Learning.englishProfile(state).reading.evidence, 1);
+    }
+    const previous = answerPractice(Core.createState(), [first], [true], knownTime);
+    const newBaseline = { level: 'A1', completedAt: new Date(2026, 3, 2, 14).toISOString() };
+    equal(Learning.englishProfile(answerPractice(previous, [second], [true], laterTime), newBaseline).reading.evidence, 1);
+  });
+
+  await test('英语填空接受标点、大小写和经过核对的写法，缩写仅在题目允许时等价', () => {
+    const field = byId.get('fill-english-reading-details-1').fields[0];
+    equal(Core.evaluateField(field, '“Ｔｕｅｓｄａｙ。”').correct, true);
+    equal(Core.evaluateField(field, 'Tue.').correct, false);
+    equal(Core.evaluateField({ ...field, accepted: ['Tue.'] }, 'TUE').correct, true);
+    const phrase = { type: 'text', expected: 'have not', accepted: ["haven't"] };
+    equal(Core.evaluateField(phrase, '  HAVE   NOT. ').correct, true);
+    equal(Core.evaluateField(phrase, 'Haven’t').correct, true);
+    equal(Core.evaluateField(phrase, 'havent').correct, false);
+    equal(Core.evaluateField(phrase, 'x'.repeat(97)), null);
+    const original = byId.get('fill-english-opposites-8');
+    const revised = byId.get(original.id + '@2');
+    assert(original.retired && !revised.retired);
+    equal(Core.evaluateField(original.fields[0], 'dim').correct, false);
+    equal(Core.evaluateField(revised.fields[0], 'DIM.').correct, true);
+  });
+
   await test('英语近期错题触发对应知识点建议，订正后从建议移除', () => {
     const now = new Date(2026, 3, 4, 9);
     let state = answerPractice(Core.createState(), ['en-v01', 'en-v07', 'en-g01'], [false, false, false]);
@@ -952,7 +983,7 @@
     equal(question.options[question.answer].en, '5');
   });
 
-  await test('AI 题保存并恢复作答和错题，计入记录但不参与等级调整', () => {
+  await test('已验算 AI 答题与普通练习共享证据，重复复习和同方程题族不补齐升阶样本', () => {
     const previous = answerPractice(Core.createState(), ['en-v01'], [true]);
     let state = Core.startAiSession(previous, questions, 'L2', aiFixture);
     const catalog = Core.questionsForState(questions, state);
@@ -963,8 +994,18 @@
     equal(state.attempts.length, 2);
     equal(Core.getMistakes(state, Core.questionsForState(questions, state))[0].question, first);
     equal(Learning.topicProgress(state, new Date(2026, 3, 5)).algebra.total, 1);
-    equal(Learning.mathProfile(state).algebra.evidence, 0);
+    equal(Learning.mathProfile(state).algebra.evidence, 1);
     throws(() => Core.startAiSession(state, questions, 'L2', aiFixture));
+    for (let index = 1; index < state.active.questionIds.length; index++) {
+      state = Core.advanceSession(state, catalog, laterTime);
+      const question = catalog.find(item => item.id === state.active.questionIds[index]);
+      state = Core.gradeAnswer(state, catalog, question.answer, laterTime);
+    }
+    equal(Learning.mathProfile(state).algebra.equationEvidence, { independent: 1, total: 3 });
+    equal(Learning.mathProfile(state).algebra.level, 'L2');
+    state = Core.advanceSession(state, catalog, laterTime);
+    state = answerPractice(state, ['ma-pr-algebra-L2-7@2', 'ma-pr-algebra-L2-9@2'], [true, true], laterTime);
+    equal(Learning.mathProfile(state).algebra.level, 'L3');
   });
 
   await test('混合 AI 练习包含真实填空与分步计算，会精确验算分数和小数', () => {
@@ -2147,7 +2188,7 @@
       await waitElement('#question-title');
       equal(read().active.mode, 'science-ai');
       equal(read().active.questionIds, expected);
-      assert(element('.eyebrow').textContent.includes('AI 组题'));
+      assert(element('.eyebrow').textContent.includes('AI 题库选题'));
     } finally {
       globalThis.fetch = previousFetch;
       config.content = original.endpoint;
@@ -2157,6 +2198,25 @@
       else config.dataset.scienceAi = original.enabled;
       await resetUi();
     }
+  });
+
+  await test('AI 出题不把自动推荐的 L4 或手选 L5 偷换成 L3，题库入口保持原级', async () => {
+    await resetUi();
+    const state = placement('math', item => item.topic === 'algebra');
+    Core.saveState(localStorage, key, state);
+    replayStorage(key);
+    await openSubject('math');
+    change('topic', 'algebra');
+    change('difficulty', 'auto');
+    assert(!document.querySelector('[data-action="ai-start"], [data-action="ai-sample"]'));
+    assert(element('.math-ai-panel .ai-notice').textContent.includes('L4'));
+    equal(element('[data-action="ai-fallback"]').dataset.level, 'L4');
+    change('difficulty', 'L5');
+    assert(element('.math-ai-panel .ai-notice').textContent.includes('L5'));
+    click('[data-action="ai-fallback"]');
+    await waitElement('#question-title');
+    assert(read().active.questionIds.every(id => byId.get(id)?.level === 'L5'));
+    await resetUi();
   });
 
   await test('AI 出题从数学设置开始，额度提示、验算保存和错题重做完整可用', async () => {
@@ -2213,6 +2273,51 @@
       if (previousOrigin === undefined) delete config.dataset.origin;
       else config.dataset.origin = previousOrigin;
       globalThis.fetch = previousFetch;
+      await resetUi();
+    }
+  });
+
+  await test('AI 重复点击只发一个请求，网络错误和超时均能恢复同级练习入口', async () => {
+    await resetUi();
+    const config = element('meta[name="eachveya-ai-endpoint"]');
+    const endpoint = config.content, origin = config.dataset.origin;
+    const fetch = globalThis.fetch, schedule = globalThis.setTimeout;
+    let calls = 0, rejectRequest;
+    try {
+      config.content = 'https://eachveya.example/api/generate';
+      config.dataset.origin = location.origin;
+      globalThis.setTimeout = (run, delay, ...args) => schedule(run, delay === 25000 ? 15 : delay, ...args);
+      globalThis.fetch = (_, { signal }) => new Promise((resolve, reject) => {
+        calls++;
+        rejectRequest = reject;
+        signal.addEventListener('abort', () => reject(new Error('Request timeout')), { once: true });
+      });
+      await openSubject('math');
+      click('[data-action="skip-placement"]');
+      change('topic', 'algebra');
+      change('difficulty', 'L2');
+      click('[data-action="ai-start"]');
+      const busyButton = element('[data-action="ai-start"]');
+      assert(busyButton.disabled);
+      busyButton.click();
+      equal(calls, 1);
+      rejectRequest(new Error('Network disconnected'));
+      await waitElement('[data-action="ai-fallback"]');
+      assert(!element('[data-action="ai-start"]').disabled);
+      equal(read().active, null);
+      click('[data-action="ai-start"]');
+      await waitElement('[data-action="ai-fallback"]');
+      equal(calls, 2);
+      assert(!element('[data-action="ai-start"]').disabled);
+      equal(element('[data-action="ai-fallback"]').dataset.level, 'L2');
+      equal(read().active, null);
+      assert(!read().generated.length);
+    } finally {
+      config.content = endpoint;
+      if (origin === undefined) delete config.dataset.origin;
+      else config.dataset.origin = origin;
+      globalThis.fetch = fetch;
+      globalThis.setTimeout = schedule;
       await resetUi();
     }
   });

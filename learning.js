@@ -8,6 +8,24 @@
   const L2_EQUATION_COUNT = 3;
   const ENGLISH_PLACEMENT_LEVELS = levels.english.slice(0, 4);
 
+  function questionIndex(state) {
+    return state.generated?.length
+      ? new Map(Core.questionsForState(questions, state).map(question => [question.id, question])) : byId;
+  }
+
+  function evidenceRows(state, subject) {
+    const index = questionIndex(state);
+    return Core.reportableAttempts(state).flatMap(attempt => {
+      const question = index.get(attempt.questionId);
+      if (question?.subject !== subject || typeof attempt.hinted !== 'boolean' || question.diagnosticOnly || question.retired) return [];
+      // Repeated review, sample sets and placement do not establish a fresh practice result.
+      const practice = (attempt.mode === 'practice' && !question.focusOnly)
+        || (attempt.mode === 'ai' && question.ai === true)
+        || (attempt.mode === 'science-ai' && question.role === 'practice');
+      return [{ attempt, question, practice }];
+    });
+  }
+
   function diagnosticIds(subject) {
     const items = questions.filter(question => question.subject === subject && question.diagnosticOnly && !question.retired);
     return [...items].sort((a, b) => levels[subject].indexOf(a.level) - levels[subject].indexOf(b.level)
@@ -72,14 +90,12 @@
         samples: [], evidence: 0, lastBatch: null, retained: null, transfer: null, seen: new Set() }];
     }));
     const reviewed = new Map(state.sessions.filter(session => session.mode === 'spaced').map(session => [session.id, session]));
-    for (const attempt of state.attempts) {
-      const question = byId.get(attempt.questionId);
-      if (question?.subject !== subject || attempt.hinted === null || question.diagnosticOnly || question.retired) continue;
+    for (const { attempt, question, practice } of evidenceRows(state, subject)) {
       const row = rows[question.topic];
       if (Date.parse(attempt.at) < row.cutoff || question.level !== row.level || row.seen.has(question.id)) continue;
-      if (['practice', 'science-ai'].includes(attempt.mode) && question.role === 'practice') {
+      if (practice && question.role === 'practice') {
         row.seen.add(question.id);
-        row.samples.push({ ...attempt, error: attempt.correct ? '' : question.errorKinds[attempt.choice] });
+        row.samples.push({ ...attempt, error: attempt.correct ? '' : question.errorKinds?.[attempt.choice] });
         row.evidence = row.samples.length;
       } else if (question.role === 'transfer' && attempt.mode === 'spaced' && attempt.hinted === false && reviewed.has(attempt.sessionId)) {
         const anchor = row.samples[0]?.at;
@@ -122,21 +138,17 @@
     const cutoff = placement ? Date.parse(placement.completedAt) : -Infinity;
     const seenPassages = new Set();
 
-    for (const attempt of state.attempts) {
-      const question = byId.get(attempt.questionId);
-      const passage = subject === 'english' ? Core.readingPassage(question) : '';
-      if (passage) {
-        if (seenPassages.has(passage)) continue;
-        seenPassages.add(passage);
-      }
-      if (question?.subject !== subject || attempt.mode !== 'practice' || typeof attempt.hinted !== 'boolean'
-        || question.diagnosticOnly || question.retired || Date.parse(attempt.at) < cutoff) continue;
+    for (const { attempt, question, practice } of evidenceRows(state, subject)) {
+      if (!practice || Date.parse(attempt.at) < cutoff) continue;
       const profile = adjustments[question.topic];
       if (question.level !== profile.level || profile.seen.has(question.id)) continue;
       const byStructure = subject === 'math' && question.topic === 'algebra' && question.level === 'L2';
       if (byStructure && !question.equationFamily) continue;
+      const passage = Core.readingPassage(question);
+      if (passage && seenPassages.has(passage)) continue;
 
       profile.seen.add(question.id);
+      if (passage) seenPassages.add(passage);
       if (byStructure) profile.equations.set(question.equationFamily, attempt);
       else profile.samples.push(attempt);
       const batch = byStructure ? [...profile.equations.values()] : profile.samples;
@@ -231,8 +243,7 @@
     const rows = Object.fromEntries(Object.values(topicsBySubject).flat().map(topic => [topic, {
       total: 0, correct: 0, recent: { total: 0, correct: 0 }, previous: { total: 0, correct: 0 }
     }]));
-    const questionById = state.generated?.length
-      ? new Map(Core.questionsForState(questions, state).map(question => [question.id, question])) : byId;
+    const questionById = questionIndex(state);
 
     for (const attempt of Core.reportableAttempts(state)) {
       const question = questionById.get(attempt.questionId);

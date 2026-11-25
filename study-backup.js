@@ -31,7 +31,7 @@
     };
   }
 
-  function merge(current, incoming, bank) {
+  function merge(current, incoming, bank, { liveSync = false } = {}) {
     const generated = new Map(current.generated.map(spec => [AI.questionId(spec), spec]));
     for (const spec of incoming.generated) {
       const key = AI.questionId(spec);
@@ -46,7 +46,8 @@
       const key = attemptKey(attempt);
       const previous = attempts.get(key);
       if (!previous) { attempts.set(key, attempt); continue; }
-      if (JSON.stringify(Core.responseOf(previous)) !== JSON.stringify(Core.responseOf(attempt)) || Date.parse(previous.at) !== Date.parse(attempt.at)
+      if (JSON.stringify(Core.responseOf(previous)) !== JSON.stringify(Core.responseOf(attempt))
+        || (!liveSync && Date.parse(previous.at) !== Date.parse(attempt.at))
         || (previous.focus && attempt.focus && previous.focus !== attempt.focus)) throw new Error('attempt_conflict');
       attempts.set(key, { ...attempt, ...previous, hinted: previous.hinted ?? attempt.hinted });
     }
@@ -56,7 +57,7 @@
     const sessions = new Map(current.sessions.map(session => [session.id, session]));
     for (const session of incoming.sessions) {
       const existing = sessions.get(session.id);
-      if (existing && (!sameSession(existing, session) || Date.parse(existing.completedAt) !== Date.parse(session.completedAt))) {
+      if (existing && (!sameSession(existing, session) || (!liveSync && Date.parse(existing.completedAt) !== Date.parse(session.completedAt)))) {
         throw new Error('session_conflict');
       }
       sessions.set(session.id, existing || session);

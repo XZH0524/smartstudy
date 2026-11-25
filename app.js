@@ -27,8 +27,8 @@
   const workshopSubjects = new Set(data?.questions?.filter(question => !question.retired && question.purpose === 'followup').map(question => question.subject));
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
-  if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 2
-    || Core?.VERSION !== 8 || !Core?.evaluateField || !Core?.readingPassage || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
+  if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 3
+    || Core?.VERSION !== 8 || !Core?.fieldInputLimit || !Core?.readingPassage || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -85,9 +85,14 @@
     scienceScope: ['课程范围', 'Curriculum scope'], generalScience: ['通用科学', 'General science'],
     scopePlanned: ['{course} 专项课程映射待审核。请选择通用科学使用现有题目。', '{course} curriculum mapping is awaiting review. Select General science to use the current bank.'],
     sciencePlacementInfo: ['三个核心知识点各两题，共 {n} 道。其他知识点会根据后续练习积累证据。', 'Two questions on each of three core topics, {n} in total. Other topics build evidence through practice.'],
-    scienceBank: ['从校验题库组题', 'Build a validated practice set'],
-    scienceAi: ['AI 按薄弱点组题', 'Assemble a set with AI'], scienceAiMode: ['AI 组题 · 已校验', 'AI-assembled · validated'],
-    scienceAiOffline: ['本地可从已校验的模板组题。', 'Build a set from validated templates locally.'],
+    scienceBank: ['从题库组题', 'Build a set from the question bank'],
+    scienceAi: ['AI 从已校验题库选题', 'AI selects from validated bank questions'],
+    scienceAiMode: ['AI 题库选题', 'AI-selected bank questions'],
+    scienceAiPreview: ['模拟 AI 题库选题', 'Simulated AI bank selection'],
+    scienceAiOffline: ['按当前知识点和等级，从现有题库组题。', 'Select existing questions for this topic and level.'],
+    scienceBankOnly: ['本页提供题库组题。', 'This page offers sets from the question bank.'],
+    scienceAiScope: ['测试服务用模拟 AI 从现有题库选题。', 'The test service simulates AI selection from the existing bank.'],
+    scienceAiOnlineScope: ['AI 按薄弱点从现有题库选题。', 'AI selects existing questions based on the requested weakness.'],
     chooseScienceTopic: ['选择一个具体知识点后可以组题。', 'Choose a specific topic to build a set.'],
     scienceEvidence: ['科学升阶需要多道独立练习及跨日新题复测。', 'Science levels advance with several independent answers and a fresh check on a later day.'],
     scienceRetained: ['已通过 {level} 跨日复测', 'Passed a later-day check at {level}'],
@@ -159,8 +164,8 @@
     aiChoice: ['选择题', 'Multiple choice'],
     aiFill: ['填空题', 'Fill in the blank'],
     aiCalculation: ['计算题', 'Two-step calculation'],
-    aiSample: ['免费试做 3 题', 'Try 3 free sample questions'],
-    aiSampleMode: ['题型试做', 'Sample practice'],
+    aiSample: ['用程序模板试做 3 题', 'Try 3 template questions'],
+    aiSampleMode: ['程序模板练习', 'Template practice'],
     aiSampleFailed: ['试做暂时无法开始，请重新选择难度。', 'The sample could not start. Choose a level again.'],
     numericHelp: ['填写整数、小数或分数，例如 −3、3.0、6/2。', 'Enter a whole number, decimal or fraction, such as −3, 3.0 or 6/2.'],
     textFillHelp: ['按题目要求输入英语单词或短语。', 'Enter an English word or phrase as directed.'],
@@ -173,6 +178,7 @@
     aiOffline: ['AI 出题服务待启用。', 'AI generation has yet to be activated.'],
     aiOnline: ['到 EachVeya 在线版使用 AI 出题', 'Use AI practice on the EachVeya website'],
     aiSelection: ['请选择「代数」或「所有知识点」，并使用推荐等级或 L1–L3。', 'Choose Algebra or All topics, then choose a recommended level or L1–L3.'],
+    aiUnsupportedLevel: ['当前等级是 {level}。AI 代数出题只支持 L1–L3，你可以继续练习 {level} 题库题。', 'Your current level is {level}. AI algebra supports L1–L3. You can practise {level} questions from the bank.'],
     aiLoading: ['正在生成和验算题目…', 'Generating and checking questions…'],
     aiLimit: ['AI 出题额度已用完。你仍可做题库练习。', 'The AI allowance has been used. Bank questions are still available.'],
     aiInvalid: ['本组题未通过验算或与旧题重复。请再试一次。', 'This set failed verification or repeated a previous question. Please try again.'],
@@ -192,7 +198,7 @@
     accountRate: ['尝试次数过多，请稍后再试。', 'Too many attempts. Try again later.'],
     accountLoadFailed: ['暂时无法恢复登录状态，可继续练习或重试。', 'Sign-in state could not be restored. You can keep practising or retry.'],
     accountSignout: ['退出账号', 'Sign out'], accountFree: ['免费版', 'Free'], accountPlus: ['升级版试用', 'Plus trial'],
-    accountHelp: ['已提交的作答、错题、计划和设置可以同步到这个测试账号。新设备可以查看记录。本次练习的未提交进度保存在当前页面。', 'Submitted answers, mistakes, plans and settings sync to this test account. Pending practice stays on this page.'],
+    accountHelp: ['同步成功后，换设备也能继续未完成的练习。已提交答案、提示和题目位置会同步。尚未提交的输入留在当前页面。', 'After syncing, you can resume an unfinished set on another device. Submitted answers, hints and your position sync. Unsubmitted input stays on this page.'],
     accountGuestTitle: ['带入游客作答', 'Bring over guest answers'],
     accountGuestAvailable: ['当前浏览器有 {n} 次游客作答。确认后可把作答和已完成的练习复制到这个账号，游客记录仍保留。', 'This browser has {n} guest answers. Confirm to copy the answers and completed sets into this account. The guest copy stays in the browser.'],
     accountGuestEmpty: ['这个网址在当前浏览器里没有游客作答。', 'No guest answers are saved for this address in this browser.'],
@@ -290,8 +296,8 @@
     if (account) {
       const previous = state;
       setState(update(state));
-      if (Object.keys(state).some(key => key !== 'active' && state[key] !== previous[key])) {
-        account.pending = { ...state, active: null };
+      if (Object.keys(state).some(key => state[key] !== previous[key])) {
+        account.pending = { ...state };
         void flushAccount(account);
       }
       return;
@@ -315,6 +321,7 @@
   }
   function updateStorageNotice() {
     const notice = document.getElementById('storage-notice');
+    if (!notice) return;
     const message = account ? (account.error ? 'accountUnsaved' : '') : storageIssue;
     notice.hidden = !message;
     notice.innerHTML = message ? t(message) : '';
@@ -439,7 +446,7 @@
         const pending = sync.pending;
         sync.pending = null;
         try {
-          const saved = await Account.request('/api/history', { owner: sync.id, revision: sync.revision, study: pending });
+          const saved = await Account.request('/api/history', { owner: sync.id, revision: sync.revision, activeSync: true, study: pending });
           if (account !== sync) return;
           if (saved.owner !== sync.id) throw new Error('account_changed');
           sync.revision = saved.revision;
@@ -450,9 +457,16 @@
               for (const key of ['language', 'plan', 'preferences']) {
                 if (sync.pending[key] === pending[key]) sync.pending[key] = saved.study[key];
               }
+              if (sync.pending.active === pending.active || saved.study.active?.id !== pending.active?.id) {
+                sync.pending.active = saved.study.active;
+              }
             }
           }
-          if (!sync.pending) setState({ ...saved.study, active: state.active });
+          if (!sync.pending) {
+            const activeChanged = JSON.stringify(state.active) !== JSON.stringify(saved.study.active);
+            setState(saved.study);
+            if (activeChanged && route() === 'practice') render();
+          }
         } catch (_) {
           sync.pending ||= pending;
           sync.error = true;
@@ -473,7 +487,7 @@
     account = { ...profile, revision: saved.revision, pending: null, flushing: null, error: false, stale: false,
       migrating: false, migrationStatus: prior?.migrationStatus };
     auth = { challenge: '', status: '', busy: false };
-    setState({ ...saved.study, active: prior ? state.active : null });
+    setState(saved.study);
     if (!prior) { selected = null; resultId = null; backupStatus = null; }
     if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
     render();
@@ -656,31 +670,37 @@
   function renderSciencePanel() {
     const request = scienceRequest();
     const enable = scienceAiEnabled() && request && Science.candidates(request).length >= 3;
+    const scope = enable ? (accountEnabled ? 'scienceAiScope' : 'scienceAiOnlineScope') : 'scienceBankOnly';
     return `<section class="placement-panel ai-panel" aria-labelledby="science-bank-heading">
       <div><h3 id="science-bank-heading">${t('scienceBank')}</h3><p>${request ? t('scienceAiOffline') : t('chooseScienceTopic')}</p></div>
       ${request ? `<div class="inline-actions">${button(t('sameLevelBank', request), 'science-bank', 'secondary', aiRequest ? 'disabled' : '')}
-        ${enable ? button(t('scienceAi'), 'science-ai', 'secondary', aiRequest ? 'disabled' : '') : ''}</div>` : ''}
+        ${enable ? button(t(accountEnabled ? 'scienceAiPreview' : 'scienceAi'), 'science-ai', 'secondary', aiRequest ? 'disabled' : '') : ''}</div>` : ''}
+      ${enable || !request ? `<p class="field-help">${t(scope)}</p>` : ''}
       ${aiRequest || aiNotice ? `<p class="ai-notice" role="status">${t(aiRequest ? 'aiLoading' : aiNotice)}</p>` : ''}
     </section>`;
   }
 
-  function selectedAiLevel() {
+  function requestedAiLevel() {
     if (setup.subject !== 'math' || (setup.topic && setup.topic !== 'algebra')) return '';
-    if (setup.level !== 'auto') return AI.LEVELS.includes(setup.level) ? setup.level : '';
-    const recommended = Learning.mathProfile(state).algebra.level;
-    return AI.LEVELS.includes(recommended) ? recommended : AI.LEVELS.at(-1);
+    return setup.level === 'auto' ? Learning.mathProfile(state).algebra.level : setup.level;
+  }
+
+  function selectedAiLevel() {
+    const level = requestedAiLevel();
+    return AI.LEVELS.includes(level) ? level : '';
   }
 
   function renderAiPanel() {
     const level = selectedAiLevel();
+    const unsupported = !level && requestedAiLevel();
     const onlineOnly = aiEndpoint() && !aiRunsHere();
     const enabled = Boolean(canUseAi() && aiEndpoint() && !onlineOnly && level);
     const recent = level && Core.getMistakes(state, questions).find(({ question, attempt }) =>
       question.topic === 'algebra' && Coach.mistakeFocus(question, attempt)
         && Date.parse(attempt.at) >= Date.now() - 14 * 86400000);
     const focus = recent && Coach.mistakeFocus(recent.question, recent.attempt);
-    const notice = !canUseAi() ? 'aiMember' : !aiEndpoint() ? 'aiOffline' : !level ? 'aiSelection' : aiRequest ? 'aiLoading' : aiNotice;
-    const fallback = (onlineOnly || !aiEndpoint() || aiNotice) && !aiRequest ? aiFailedLevel || level : '';
+    const notice = !level ? 'aiSelection' : !canUseAi() ? 'aiMember' : !aiEndpoint() ? 'aiOffline' : aiRequest ? 'aiLoading' : aiNotice;
+    const fallback = unsupported || ((onlineOnly || !aiEndpoint() || aiNotice) && !aiRequest ? aiFailedLevel || level : '');
     return `<section class="placement-panel ai-panel math-ai-panel" aria-labelledby="ai-heading">
       <div><h3 id="ai-heading">${t('aiTitle')}</h3><p>${t(accountEnabled ? 'aiPreview' : 'aiScope')}</p>
         ${account?.aiAllowance ? `<p class="field-help">${t('aiPreviewAllowance', account.aiAllowance)}</p>` : ''}</div>
@@ -696,7 +716,8 @@
         ${fallback ? button(t('sameLevelBank', { level: fallback }), 'ai-fallback', 'secondary', `data-level="${fallback}"`) : ''}
         ${focus ? `<a href="#coach/${focus}" class="button secondary">${t('targetedAlgebra', { skill: focusSkills[focus].label[state.language] })}</a>` : ''}
       </div>
-      ${onlineOnly ? `<p class="field-help">${t('localAiBank')} <a href="https://xzh0524.github.io/smartstudy/#practice" data-online-practice>${t('aiOnline')}</a></p>`
+      ${unsupported ? `<p class="ai-notice" role="status">${t('aiUnsupportedLevel', { level: unsupported })}</p>`
+        : onlineOnly && level ? `<p class="field-help">${t('localAiBank')} <a href="https://xzh0524.github.io/smartstudy/#practice" data-online-practice>${t('aiOnline')}</a></p>`
         : notice ? `<p class="ai-notice" role="status">${t(notice)}</p>` : ''}
     </section>`;
   }
@@ -834,7 +855,8 @@
   function modeLabel(mode, question) {
     if (mode === 'spaced' && question?.purpose === 'followup') return t('lessonCheck');
     if (accountEnabled && mode === 'science-ai') return t('sciencePreviewMode');
-    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode', 'science-ai': 'scienceAiMode' })[mode] || mode);
+    return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode',
+      'science-ai': accountEnabled ? 'scienceAiPreview' : 'scienceAiMode' })[mode] || mode);
   }
 
   function answerLabel(question, response) {
@@ -861,7 +883,7 @@
       <div class="numeric-fields">${question.fields.map((field, index) => `<div class="field">
         <label for="numeric-${index}">${text(field.label)}</label>
         <input id="numeric-${index}" name="answer-${index}" class="numeric-input" data-numeric-input type="text"
-          autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="40"
+          autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="${Core.fieldInputLimit(field)}"
           value="${escapeHtml(response[index] ?? '')}" ${graded ? 'readonly' : 'aria-describedby="numeric-help"'}>
         ${score ? `<span class="numeric-mark ${score.marks[index] ? 'score-ok' : 'score-error'}">${score.marks[index]
           ? t('numericMarkCorrect') : hideSolution ? t('stepRetry') : t('numericMarkExpected', { value: field.expected })}</span>` : ''}
@@ -1064,7 +1086,8 @@
     const endpoint = aiEndpoint();
     const science = typeof level === 'object';
     const format = setup.aiFormat || 'mixed';
-    if (!canUseAi() || !endpoint || !aiRunsHere() || aiRequest || (science ? !level || !scienceAiEnabled() : !selectedAiLevel() || !AI.LEVELS.includes(level))) return;
+    if (!level || !canUseAi() || !endpoint || !aiRunsHere() || aiRequest
+      || (science ? !scienceAiEnabled() : level !== selectedAiLevel())) return;
     const previousId = state.active?.id;
     const request = new AbortController();
     aiRequest = request;
@@ -1439,7 +1462,7 @@
           if (ids.length) await begin({ subject: request.subject, ids, count: ids.length });
         }
       }
-      if (action === 'ai-fallback' && AI.LEVELS.includes(target.dataset.level)) {
+      if (action === 'ai-fallback' && target.dataset.level === requestedAiLevel() && levels.math.includes(target.dataset.level)) {
         await begin({ subject: 'math', topic: 'algebra', level: target.dataset.level, count: 3 });
       }
       if (action === 'lesson' && Object.hasOwn(Lessons.workshops, target.dataset.subject)) {
@@ -1535,6 +1558,7 @@
   render();
   if (accountEnabled) {
     void refreshAccount();
+    window.addEventListener('online', () => { if (account?.pending) void flushAccount(account); });
     window.addEventListener('beforeunload', event => {
       if (!account?.pending && !account?.flushing) return;
       event.preventDefault();
@@ -1543,7 +1567,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.19';
+    script.src = 'tests.js?v=2.20';
     document.body.appendChild(script);
   }
 })();

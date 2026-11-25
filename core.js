@@ -53,13 +53,26 @@
     ? question.passageId || question.originalId || question.id : '';
   const schedulesLessonCheck = question => question?.purpose === 'lesson' || question?.readingEvidence === true;
 
+  function textAnswer(value) {
+    return value.normalize('NFKC').trim().toLowerCase()
+      .replace(/[‘’ʼ]/g, "'").replace(/[‐‑]/g, '-').replace(/\s+/gu, ' ')
+      .replace(/[.!?,;:。！？、；：]+$/u, '').trim()
+      .replace(/^"(.*)"$|^“(.*)”$|^'(.*)'$/u, '$1$2$3')
+      .replace(/[.!?,;:。！？、；：]+$/u, '').trim();
+  }
+
+  function fieldInputLimit(field) {
+    if (field.type !== 'text') return 40;
+    return [field.expected, ...(field.accepted || [])].some(answer => /\s/u.test(answer.trim())) ? 96 : 64;
+  }
+
   function evaluateField(field, input) {
     if (field.type === 'text') {
-      if (typeof input !== 'string' || input.length > 40) return null;
-      const normalize = value => value.normalize('NFKC').trim().toLowerCase().replace(/[‘’]/g, "'").replace(/\s+/gu, ' ');
-      const value = normalize(input);
+      if (typeof input !== 'string' || input.length > fieldInputLimit(field)) return null;
+      const value = textAnswer(input);
+      // Keep previously accepted English-shaped wrong answers valid as recorded attempts.
       if (!/^[a-z][a-z '\-]*$/u.test(value)) return null;
-      const correct = [field.expected, ...(field.accepted || [])].some(answer => normalize(answer) === value);
+      const correct = [field.expected, ...(field.accepted || [])].some(answer => textAnswer(answer) === value);
       return { text: input.trim(), correct };
     }
     const value = AI.parseNumber(input);
@@ -370,6 +383,6 @@
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
     shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf, mistakeFocus,
     advanceSession, localDate, dailyStats,
-    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage, schedulesLessonCheck, evaluateField
+    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage, schedulesLessonCheck, evaluateField, fieldInputLimit
   };
 })();

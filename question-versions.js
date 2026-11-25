@@ -63,5 +63,23 @@
     });
   }
 
-  globalThis.EachVeyaQuestionVersions = { version: 2 };
+  // Retain the answers students received before defensible alternatives were added.
+  for (const [number, alternative, zh, en] of [
+    [3, 'demanding', 'difficult 或 demanding 都可表达题目更难。', 'Both difficult and demanding fit the contrast with simple.'],
+    [8, 'dim', 'dark 或 dim 都可以形容光线不足的房间。', 'Both dark and dim can describe a room with less light than the bright hall.'],
+    [10, 'gradual', 'gentle 或 gradual 都能形容由陡变缓的坡度。', 'Both gentle and gradual can describe the slope as less steep.']
+  ]) {
+    const id = `fill-english-opposites-${number}`;
+    const [field] = ids.get(id).fields;
+    revise(id, { fields: [{ ...field, accepted: [alternative] }], explanation: bilingual(zh, en) });
+  }
+  const museum = ids.get('fill-english-reading-details-5');
+  revise(museum.id, {
+    prompt: bilingual(museum.prompt.zh.replace('Tickets are always available ___.', 'Outside holidays, the museum sells tickets ___.'),
+      museum.prompt.en.replace('Tickets are always available ___.', 'Outside holidays, the museum sells tickets ___.')),
+    explanation: bilingual('第一句说博物馆在网上售票。第二句的 also 表明假期另加门口售票。',
+      'The first sentence says the museum sells tickets online. Also introduces the extra option of buying at the gate on holidays.')
+  });
+
+  globalThis.EachVeyaQuestionVersions = { version: 3 };
 })();

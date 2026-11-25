@@ -283,7 +283,8 @@
       const matches = patterns.filter(([value, skill]) => skill && value === Number(option.en));
       if (index !== question.answer && matches.length === 1) errors[index] = matches[0][1];
     });
-    return { ...question, focus, errors, equationStep: { coefficient, offset, right: d, grouped } };
+    return { ...question, focus, errors, equationStep: { coefficient, offset, right: d, grouped },
+      ...(question.ai && spec.level === 'L2' ? { equationFamily: 'linear' } : {}) };
   }
 
   Object.assign(skills, globalThis.EachVeyaScience.topics);
