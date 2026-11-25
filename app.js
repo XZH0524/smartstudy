@@ -1543,7 +1543,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.18';
+    script.src = 'tests.js?v=2.19';
     document.body.appendChild(script);
   }
 })();

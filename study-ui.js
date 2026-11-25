@@ -10,7 +10,7 @@
 
   const copy = {
     evidenceLessons: ['三题专项试练', 'Three-question workshops'],
-    lessonReview: ['本组题已通过程序检查，仍待独立教师复核。发现问题可在练习结果中报错。', 'These questions have passed automated checks and await independent teacher review. Flag an issue from your results.'],
+    lessonReview: ['专项题已通过程序检查。试点题的复核结果可在知识路线查看。', 'Workshop questions pass automated checks. Review status for pilot questions is shown in Topic paths.'],
     equationLesson: ['数学 · 分两步解方程 · L2', 'Maths · Two-step equations · L2'],
     readingLesson: ['英语 · 阅读找依据 · A1', 'English · Find the supporting sentence · A1'],
     speedLesson: ['物理 · 平均速率 · L2', 'Physics · Average speed · L2'],
@@ -91,8 +91,8 @@
     roadmapGuide: ['学这节', 'Guide'],
     pilotRoute: ['试点学习路线', 'Pilot learning path'],
     pilotPrerequisites: ['学习顺序', 'Learning sequence'],
-    pilotPending: ['题单待教师复核，试学入口暂未开放。', 'The questions are awaiting teacher review. The pilot is currently closed.'],
-    pilotStartingLater: ['复核已完成，试学入口暂未开放。', 'The questions have been reviewed. The pilot is currently closed.'],
+    pilotPending: ['题单待复核，试学入口暂未开放。', 'The questions are awaiting review. The pilot is currently closed.'],
+    pilotStartingLater: ['题单已通过 DeepSeek 复核和程序核对。试学入口暂未开放。', 'DeepSeek review and automated answer checks are complete. The pilot is currently closed.'],
     report: ['学习报告', 'Study report'], reportIntro: ['根据已提交的作答比较表现，并查看下一步可练的知识点。', 'Compare submitted answers and choose what to practise next.'],
     reportToday: ['今天', 'Today'], reportWeek: ['近 7 天', 'Last 7 days'], reportMonth: ['近 30 天', 'Last 30 days'], reportQuarter: ['近 90 天', 'Last 90 days'],
     reportFilters: ['报告时段', 'Report period'], reportTime: ['记录到的作答时间', 'Observed answering time'],
@@ -283,7 +283,8 @@
     function renderPilot(subject) {
       const route = Pilot?.routes[subject];
       if (!route) return '';
-      const approved = route.stages.every(stage => stage.items.every(item => item.review === 'approved'));
+      const approved = route.stages.every(stage => stage.items.every(item =>
+        item.review.status === 'approved' && item.review.reviewer === 'DeepSeek'));
       return `<details class="study-details" id="pilot-path">
         <summary>${t('pilotRoute')} · ${text(topics[route.topic])} · ${escapeHtml(route.level)}</summary>
         <p class="field-help">${t(approved ? 'pilotStartingLater' : 'pilotPending')}</p>

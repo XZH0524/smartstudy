@@ -1104,6 +1104,7 @@
       const panel = element('#pilot-path');
       panel.open = true;
       assert(panel.querySelector('summary').textContent.includes(topics[route.topic].zh), id);
+      assert(panel.textContent.includes('已通过 DeepSeek 复核和程序核对'), id);
       assert(panel.textContent.includes('试学入口暂未开放'), id);
       equal([...panel.querySelectorAll('ol:last-child li')].map(node => node.textContent),
         ['起点测评', '分步讲解', '专项练习', '隔天复测', '第 7 天复测']);
@@ -1111,7 +1112,7 @@
     }
     change('language', 'en');
     assert(element('#pilot-path').textContent.includes('Day 7 check'));
-    assert(element('#pilot-path').textContent.includes('awaiting teacher review'));
+    assert(element('#pilot-path').textContent.includes('DeepSeek review and automated answer checks are complete'));
     fitsViewport();
     await resetUi();
   });
