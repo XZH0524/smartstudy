@@ -1,6 +1,13 @@
 (function () {
   'use strict';
   const enabled = document.querySelector('meta[name="eachveya-preview-account"]')?.content === 'enabled';
+  const demoContacts = { phone: '+8610000000001', email: 'learner1@example.test' };
+
+  function demoMethod(contact) {
+    if (/^learner[1-9]\d{0,2}@example\.test$/i.test(contact)) return 'email';
+    if (/^\+8610000000[0-9]{3}$/.test(contact)) return 'sms';
+    return null;
+  }
 
   async function request(path, body, owner) {
     const options = { credentials: 'same-origin', headers: {}, signal: AbortSignal.timeout(15_000) };
@@ -17,5 +24,5 @@
     return value;
   }
 
-  globalThis.EachVeyaAccount = { enabled, request };
+  globalThis.EachVeyaAccount = { enabled, demoContacts, demoMethod, request };
 })();

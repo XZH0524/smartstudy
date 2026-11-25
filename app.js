@@ -165,12 +165,16 @@
     aiInvalid: ['本组题未通过验算或与旧题重复。请再试一次。', 'This set failed verification or repeated a previous question. Please try again.'],
     aiFailure: ['暂时无法生成题目。请稍后重试，或开始题库练习。', 'Questions could not be generated. Try again later or practise from the question bank.'],
     account: ['账号', 'Account'], accountLogin: ['登录测试账号', 'Sign in to a test account'],
-    accountSubtitle: ['本机测试。仅使用下方的测试邮箱或号码。验证码在启动窗口显示。', 'Local preview. Use the test email or number below. Codes appear in the server window.'],
-    accountContact: ['测试邮箱或 +86 号码', 'Test email or +86 number'], accountInvite: ['首次注册邀请码', 'Invitation code for first sign-in'],
-    accountCodes: ['可用 learner1@example.test、learner2@example.test 或演示号码 +8610000000001。', 'Use learner1@example.test, learner2@example.test or demo number +8610000000001.'],
+    accountSubtitle: ['本机版只使用演示账号。请在 Mac 的终端启动窗口查看测试验证码。', 'Use a demo account in this local preview. Find the test code in the Mac Terminal window that started it.'],
+    accountContact: ['演示手机号或邮箱', 'Demo phone number or email'], accountInvite: ['首次登录用邀请码，已注册可留空', 'Invitation code for first sign-in. Leave blank if already registered.'],
+    accountDemoPhone: ['用演示手机号', 'Use demo phone number'], accountDemoEmail: ['用演示邮箱', 'Use demo email'],
+    accountDemoHelp: ['演示手机号为 {phone}，终端会显示验证码。本机版没有接入短信或邮件服务。', 'The demo number is {phone}. The code appears in Terminal. SMS and email delivery are disabled in this preview.'],
+    accountDemoRequired: ['这个号码或邮箱无法在本机版使用。请点「用演示手机号」或「用演示邮箱」。', 'This phone number or email cannot be used in the local preview. Choose “Use demo phone number” or “Use demo email”.'],
     accountSend: ['获取测试验证码', 'Get test code'], accountCode: ['六位验证码', 'Six-digit code'],
     accountVerify: ['验证并登录', 'Verify and sign in'], accountRestart: ['重新获取验证码', 'Request another code'],
-    accountSent: ['凭证有效时，启动窗口会显示验证码。', 'The server window shows a code when the credentials are eligible.'],
+    accountSent: ['请在终端查看六位验证码。如果没出现，请点「重新获取验证码」，检查演示账号和邀请码。首次登录需要一张未使用的邀请码。', 'Look in Terminal for the six-digit code. If none appears, request another code and check the demo account and invitation. First sign-in requires an unused invitation.'],
+    accountInvalidCode: ['验证码有误、已过期或已用过。请检查终端里的六位码，或重新获取。', 'The code is incorrect, expired, or already used. Check the six-digit code in Terminal or request another one.'],
+    accountConnection: ['暂时无法连接本机测试服务。请确认终端启动窗口还开着，再重试。', 'The local test server could not be reached. Keep its Terminal window open and try again.'],
     accountFailed: ['无法完成操作。请检查测试凭证、邀请码或验证码。', 'The action could not be completed. Check the test identity, invitation or code.'],
     accountRate: ['尝试次数过多，请稍后再试。', 'Too many attempts. Try again later.'],
     accountLoadFailed: ['暂时无法恢复登录状态，可继续练习或重试。', 'Sign-in state could not be restored. You can keep practising or retry.'],
@@ -388,17 +392,23 @@
           <p>${t('accountGuestBackup')}</p><a href="#records/backup">${t('accountGuestBackupLink')}</a>
         </section>`;
     }
+    const disabled = auth.busy ? 'disabled' : '';
     const form = auth.challenge ? `<label class="field"><span>${t('accountCode')}</span>
-      <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
-      <div class="inline-actions"><button type="submit" class="button" ${auth.busy ? 'disabled' : ''}>${t('accountVerify')}</button>
-      ${button(t('accountRestart'), 'account-restart', 'secondary', auth.busy ? 'disabled' : '')}</div>`
-      : `<label class="field"><span>${t('accountContact')}</span>
-      <input name="contact" type="text" autocomplete="off" autocapitalize="none" maxlength="160" required></label>
+      <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
+        aria-describedby="account-login-status" required></label>
+      <div class="inline-actions"><button type="submit" class="button" ${disabled}>${t('accountVerify')}</button>
+      ${button(t('accountRestart'), 'account-restart', 'secondary', disabled)}</div>`
+      : `<div class="inline-actions">${button(t('accountDemoPhone'), 'account-demo-phone', 'secondary', disabled)}
+      ${button(t('accountDemoEmail'), 'account-demo-email', 'secondary', disabled)}</div>
+      <p id="account-demo-help" class="field-help">${t('accountDemoHelp', Account.demoContacts)}</p>
+      <label class="field"><span>${t('accountContact')}</span>
+      <input name="contact" type="text" autocomplete="off" autocapitalize="none" maxlength="160"
+        aria-describedby="account-demo-help account-login-status" required></label>
       <label class="field"><span>${t('accountInvite')}</span><input name="invite" autocomplete="off" maxlength="64"></label>
-      <button type="submit" class="button" ${auth.busy ? 'disabled' : ''}>${t('accountSend')}</button>`;
+      <button type="submit" class="button" ${disabled}>${t('accountSend')}</button>`;
     return `${heading(t('accountLogin'), t('accountSubtitle'))}<form id="account-form" class="panel configuration">
-      <p>${t('accountCodes')}</p>${form}
-      <p role="status">${auth.status ? t(auth.status) : ''}</p></form>
+      ${form}
+      <p id="account-login-status" role="status">${auth.status ? t(auth.status) : ''}</p></form>
       ${auth.status === 'accountLoadFailed' ? button(t('accountSync'), 'account-sync', 'secondary') : ''}`;
   }
 
@@ -1211,6 +1221,16 @@
       event.preventDefault();
       if (!accountEnabled || account || auth.busy) return;
       const form = new FormData(event.target);
+      const contact = form.get('contact')?.trim();
+      const method = contact ? Account.demoMethod(contact) : null;
+      if (!auth.challenge && !method) {
+        auth.status = 'accountDemoRequired';
+        document.getElementById('account-login-status').innerHTML = t(auth.status);
+        const field = event.target.elements.namedItem('contact');
+        field.setAttribute('aria-invalid', 'true');
+        field.focus();
+        return;
+      }
       auth.busy = true;
       const submit = event.target.querySelector('button[type="submit"]');
       submit.disabled = true;
@@ -1221,16 +1241,17 @@
           try { await openAccount(profile); }
           catch (_) { auth.status = 'accountLoadFailed'; }
         } else {
-          const contact = form.get('contact').trim();
           const { challenge } = await Account.request('/api/request-code', {
-            method: contact.startsWith('+') ? 'sms' : 'email',
-            contact, invite: form.get('invite').trim()
+            method, contact, invite: form.get('invite').trim()
           });
           auth.challenge = challenge;
           auth.status = 'accountSent';
         }
       } catch (error) {
-        auth.status = error.status === 429 ? 'accountRate' : 'accountFailed';
+        if (error.status === 429) auth.status = 'accountRate';
+        else if (error.message === 'test_identity_required') auth.status = 'accountDemoRequired';
+        else if (error.message === 'invalid_code') auth.status = 'accountInvalidCode';
+        else auth.status = 'accountConnection';
       } finally {
         auth.busy = false;
         if (route() === 'account') { render(); main.querySelector('input')?.focus(); }
@@ -1265,6 +1286,16 @@
     if (!target || target.disabled) return;
     const action = target.dataset.action;
     try {
+      if (action === 'account-demo-phone' || action === 'account-demo-email') {
+        if (auth.busy) return;
+        const contact = target.form.elements.namedItem('contact');
+        contact.value = Account.demoContacts[action === 'account-demo-phone' ? 'phone' : 'email'];
+        contact.removeAttribute('aria-invalid');
+        auth.status = '';
+        document.getElementById('account-login-status').textContent = '';
+        target.form.elements.namedItem('invite').focus();
+        return;
+      }
       if (action === 'account-restart') { auth = { challenge: '', status: '', busy: false }; render(); main.querySelector('input')?.focus(); }
       if (action === 'account-sync') await refreshAccount();
       if (action === 'account-logout') await signOut();
