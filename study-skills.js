@@ -283,7 +283,7 @@
       const matches = patterns.filter(([value, skill]) => skill && value === Number(option.en));
       if (index !== question.answer && matches.length === 1) errors[index] = matches[0][1];
     });
-    return { ...question, focus, errors };
+    return { ...question, focus, errors, equationStep: { coefficient, offset, right: d, grouped } };
   }
 
   Object.assign(skills, globalThis.EachVeyaScience.topics);

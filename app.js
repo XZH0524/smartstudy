@@ -22,7 +22,7 @@
   }
   const completeBank = data?.subjects?.length && data.subjects.every(({ id, available }) =>
     !available || practiceCounts.get(id) >= 400);
-  if (!completeBank || !Core?.evaluateAnswer || !AI?.ROUND_FORMATS || [Learning, Science, Coach, focusSkills, StudyUI, Backup].some(component => !component)) {
+  if (!completeBank || !globalThis.EachVeyaLessons || !Core?.evaluateAnswer || !AI?.ROUND_FORMATS || [Learning, Science, Coach, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -46,7 +46,7 @@
   }
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
-  const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v5`, `${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
+  const LEGACY_STORAGE_KEYS = [`${storagePrefix}.v6`, `${storagePrefix}.v5`, `${storagePrefix}.v4`, `${storagePrefix}.v3`, `${storagePrefix}.v2`, `${storagePrefix}.v1`];
   const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     ...StudyUI.copy,
@@ -62,7 +62,7 @@
     disciplines: ['英语、数学与科学', 'English, mathematics & science'],
     welcomeSub: ['面向全球中学生的练习平台，涵盖英语、数学、物理、化学与生物。', 'English and mathematics practice for secondary school students, alongside physics, chemistry and biology.'],
     workspace: ['练习概览', 'Practice overview'], heroTitle: ['选择知识点和难度', 'Choose a topic and level'],
-    heroText: ['做选择题、查看答案解析，并复习答错的题目。', 'Answer multiple-choice questions, read the explanations and revisit mistakes.'],
+    heroText: ['选择知识点开始练习，查看解析或复习错题。', 'Practise a topic, explore an explanation or revisit a mistake.'],
     resume: ['继续上次练习', 'Continue practice'], answered: ['累计作答', 'Answers submitted'], accuracy: ['作答正确率', 'Answer accuracy'],
     pending: ['待复习错题', 'Mistakes to revisit'], questionsUnit: ['题', 'questions'], noData: ['暂无数据', 'No data yet'], subjects: ['选择你的科目', 'Choose your subject'],
     available: ['{n} 个科目可练习', '{n} subjects ready to explore'], questionBank: ['{n} 道练习题', '{n} practice questions'], coverage: ['累计作答 {n} 次', '{n} answers submitted'],
@@ -612,7 +612,8 @@
         <h3 id="feedback-title" tabindex="-1">${t(correct ? 'correct' : 'incorrect')}</h3>
         <p class="answer-line">${t('rightAnswer', { answer: expectedLabel(question) })}</p>
         <p><strong>${t('explanation')}</strong></p><p>${text(question.explanation)}</p>
-        ${correct ? '' : study.renderClue(question, { choice: answer, correct })}
+        ${study.renderEvidence(question)}
+        ${!graded || correct ? '' : study.renderClue(question, score)}
       </div>`;
     return `<div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
     <div class="practice-layout">
@@ -708,6 +709,7 @@
             <p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
             ${t('rightAnswer', { answer: expectedLabel(question) })}<br>
             ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>
+            ${study.renderEvidence(question)}
             ${study.renderQuestionReport(question, state.flags.find(flag => flag.questionId === id))}
           </details>
         </div>`;
@@ -1070,9 +1072,14 @@
       if (action === 'ai-fallback' && AI.LEVELS.includes(target.dataset.level)) {
         await begin({ subject: 'math', topic: 'algebra', level: target.dataset.level, count: 3 });
       }
+      if (action === 'lesson' && ['math', 'english'].includes(target.dataset.subject)) {
+        const subject = target.dataset.subject;
+        const ids = globalThis.EachVeyaLessons.roundIds(state, subject);
+        await begin({ subject, ids, count: ids.length });
+      }
       if (action === 'focus-practice') {
         const { focus, mode } = target.dataset;
-        const profile = Science.topics[focus] ? Coach.assessment(state, questions)[focus] : null;
+        const profile = Coach.assessment(state, questions)[focus];
         if (profile && mode === 'spaced' && (!profile.due || profile.due > Core.localDate(new Date()))) return;
         const ids = Coach.focusIds(state, focus, mode, undefined, profile);
         if (ids.length) await begin({ subject: focusSkills[focus].subject, ids, count: ids.length, focus, mode });
@@ -1146,7 +1153,7 @@
   render();
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.8';
+    script.src = 'tests.js?v=2.9';
     document.body.appendChild(script);
   }
 })();

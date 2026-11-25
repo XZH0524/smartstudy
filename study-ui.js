@@ -8,6 +8,11 @@
   const { topics, topicsBySubject, subjects } = globalThis.SmartStudyData;
 
   const copy = {
+    evidenceLessons: ['三题专项试练', 'Three-question workshops'],
+    lessonReview: ['本组题已通过程序检查，仍待独立教师复核。发现问题可在练习结果中报错。', 'These questions have passed automated checks and await independent teacher review. Flag an issue from your results.'],
+    equationLesson: ['分两步解方程 · L2', 'Two-step equations · L2'],
+    readingLesson: ['找到支持答案的原句 · A1', 'Find the supporting sentence · A1'],
+    originalEvidence: ['原文依据', 'Evidence in the passage'],
     coach: ['分步辅导', 'Step-by-step guidance'],
     coachIntro: ['先判断自己卡在哪一步，再用没见过的题检验理解。', 'Find the step you got stuck on, then check your understanding on a new question.'],
     coachBasis: ['这些提示和例题由预设教学规则提供，可在本地使用。', 'These guided prompts and worked examples use built-in teaching rules and work locally.'],
@@ -102,9 +107,20 @@
       return `<a class="button secondary ${extra}" href="${coachUrl(id)}">${label || text(skills[id].label)}</a>`;
     }
 
+    function renderEvidence(question) {
+      return question.evidenceQuote ? `<p><strong>${t('originalEvidence')}</strong> <q lang="en">${escapeHtml(question.evidenceQuote)}</q></p>` : '';
+    }
+
     function renderClue(question, attempt) {
-      if (question.fields) return '';
       const focus = Coach.mistakeFocus(question, attempt);
+      if (question.fields) {
+        if (!focus) return '';
+        const { right, offset, coefficient } = question.equationStep;
+        const operation = focus === 'balance' ? right + (offset < 0 ? ' + ' : ' − ') + Math.abs(offset)
+          : question.fields[0].expected + ' ÷ (' + coefficient + ')';
+        const prompt = language() === 'zh' ? '单独算一算 ' + operation + '，你得到多少？' : 'Try ' + operation + ' on its own. What do you get?';
+        return `<div class="mistake-clue"><p>${escapeHtml(prompt)}</p>${linkToCoach(focus, t('probe'))}</div>`;
+      }
       if (!focus) return `<p class="field-help">${t('coachAmbiguous')}</p>`;
       const kind = Science.errorLabels[question.errorKinds?.[attempt.choice]];
       return `<div class="mistake-clue"><p>${kind ? t('scienceErrorClue', { kind: kind[language()] }) : t('coachSuggestion', { skill: skills[focus].label[language()] })}</p>
@@ -122,7 +138,7 @@
       const record = profile[focus];
       const trail = Coach.prerequisiteTrail(focus, profile);
       const modes = ['verified', 'scheduled'].includes(record.status) ? ['spaced', 'retake'] : record.status === 'confirmed' ? ['retake'] : ['probe', 'retake'];
-      const ready = modes.filter(mode => (mode !== 'spaced' || !skill.domain || (record.due && record.due <= Core.localDate(new Date())))
+      const ready = modes.filter(mode => (mode !== 'spaced' || (record.due && record.due <= Core.localDate(new Date())))
         && Coach.focusIds(state, focus, mode, undefined, record).length);
       return `${heading(text(skill.label), t('coachIntro'))}
         <div class="study-grid">
@@ -229,6 +245,10 @@
       }
       return `${heading(t('plan'), t('planSubtitle'))}
         ${renderToday(plan, state.active)}
+        <section class="panel study-panel"><h2>${t('evidenceLessons')}</h2><div class="study-actions">
+          ${button(t('equationLesson'), 'lesson', 'secondary', 'data-subject="math"')}
+          ${button(t('readingLesson'), 'lesson', 'secondary', 'data-subject="english"')}</div>
+          <p class="field-help">${t('lessonReview')}</p></section>
         ${renderRoadmap(state, catalog, preferredSubject || settings.goal)}
         <section class="panel study-panel plan-preview">
           <details class="study-details plan-settings"><summary>${t('planSettings')}</summary>
@@ -323,7 +343,7 @@
       </details>`;
     }
 
-    return { renderClue, renderCoach, renderFocusResult, renderToday, renderPlan, renderReport, renderBackup, renderQuestionReport, planTopicOptions };
+    return { renderEvidence, renderClue, renderCoach, renderFocusResult, renderToday, renderPlan, renderReport, renderBackup, renderQuestionReport, planTopicOptions };
   }
   globalThis.EachVeyaStudyUI = { copy, create };
 })();

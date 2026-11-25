@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const VERSION = 6;
+  const VERSION = 7;
   const AI = globalThis.EachVeyaAi;
   const { levels: { english: englishLevels }, topicsBySubject } = globalThis.SmartStudyData;
   const SkillData = globalThis.EachVeyaSkills;
@@ -63,8 +63,21 @@
     return { response: numbers.map(number => number.text), correct: marks.every(Boolean), marks };
   }
 
+  function mistakeFocus(question, attempt) {
+    if (attempt.correct) return '';
+    const step = question.equationStep;
+    if (step && question.format === 'calculation') {
+      const marks = evaluateAnswer(question, responseOf(attempt))?.marks;
+      if (!marks) return '';
+      if (!marks[0] && !step.grouped && step.offset !== 0) return 'balance';
+      if (marks[0] && !marks[1] && Math.abs(step.coefficient) > 1) return 'coefficient';
+      return '';
+    }
+    return question.errors?.[attempt.choice] || '';
+  }
+
   function normalizeState(raw, questions) {
-    if (!raw || ![1, 2, 3, 4, 5, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || ![1, 2, 3, 4, 5, 6, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
     const generated = [];
@@ -318,7 +331,7 @@
 
   globalThis.SmartStudyCore = {
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
-    shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf,
+    shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf, mistakeFocus,
     advanceSession, localDate, dailyStats,
     reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes
   };

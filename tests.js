@@ -10,6 +10,7 @@
   const { questions, subjects, topics, topicsBySubject, levels, skills, curricula } = globalThis.SmartStudyData;
   const byId = new Map(questions.map(question => [question.id, question]));
   const key = `smart-study.tests.v${Core.VERSION}`;
+  const v6Key = 'smart-study.tests.v6';
   const v5Key = 'smart-study.tests.v5';
   const v4Key = 'smart-study.tests.v4';
   const v3Key = 'smart-study.tests.v3';
@@ -925,7 +926,7 @@
   }
 
   const waitElement = selector => waitFor(() => document.querySelector(selector), `Missing ${selector}`);
-  const read = () => Core.readState(localStorage, key, [v5Key, v4Key, v3Key, previousKey, legacyKey], questions);
+  const read = () => Core.readState(localStorage, key, [v6Key, v5Key, v4Key, v3Key, previousKey, legacyKey], questions);
   const replayStorage = name => window.dispatchEvent(new StorageEvent('storage', { key: name }));
   const current = () => {
     const state = read();
@@ -940,6 +941,7 @@
 
   async function resetUi() {
     localStorage.removeItem(key);
+    localStorage.removeItem(v6Key);
     localStorage.removeItem(v5Key);
     localStorage.removeItem(v4Key);
     localStorage.removeItem(v3Key);
@@ -989,7 +991,7 @@
     assert(document.title.includes('EachVeya 学验共途'));
     equal(element('main h1').textContent, 'EachVeya 学验共途');
     assert(element('.page-heading .subtitle').textContent.includes('英语、数学、物理、化学与生物'));
-    assert(element('.hero-copy p').textContent.includes('答案解析'));
+    assert(element('.hero-copy p').textContent.includes('解析'));
     change('language', 'en');
     equal(document.documentElement.lang, 'en');
     equal(element('#brand').getAttribute('aria-label'), 'EachVeya');
@@ -998,7 +1000,7 @@
     assert(element('#navigation').textContent.includes('Progress'));
     equal(element('main h1').textContent, 'EachVeya');
     assert(element('.page-heading .subtitle').textContent.includes('English and mathematics practice for secondary school students'));
-    assert(element('.hero-copy p').textContent.includes('multiple-choice questions'));
+    assert(element('.hero-copy p').textContent.includes('an explanation'));
     fitsViewport();
   });
 
@@ -1287,6 +1289,97 @@
     assert(element('.focus-result').textContent.includes('最近一次新题检验通过'));
     assert(element('.focus-result').textContent.includes('下次复习'));
     fitsViewport();
+    await resetUi();
+  });
+
+  await test('两科专项的答案可独立核对，练习和保留的跨日题使用不同材料', () => {
+    for (const subject of ['math', 'english']) {
+      const lesson = questions.filter(q => q.subject === subject && q.purpose === 'lesson');
+      const transfer = questions.filter(q => q.subject === subject && q.purpose === 'transfer');
+      equal(lesson.length, 12);
+      equal(transfer.length, 2);
+      const contexts = new Set(lesson.map(q => q.lessonGroup));
+      equal(contexts.size, 3);
+      const seen = new Set();
+      const state = Core.createState();
+      for (let round = 0; round < 4; round++) {
+        const ids = globalThis.EachVeyaLessons.roundIds(state, subject);
+        equal(new Set(ids.map(id => byId.get(id).lessonGroup)).size, 3);
+        for (const id of ids) { assert(!seen.has(id)); seen.add(id); state.attempts.push({questionId:id}); }
+      }
+      for (const q of transfer) assert(!contexts.has(q.lessonGroup) && !seen.has(q.id));
+      for (const q of [...lesson, ...transfer]) {
+        if (subject === 'math') {
+          const match = q.prompt.en.match(/(\d+)x ([+−]) (\d+) = (\d+)$/);
+          assert(match, q.id);
+          const [, a, sign, b, d] = match;
+          const right = Number(d) - (sign === '+' ? Number(b) : -Number(b));
+          equal(q.fields.map(f => f.expected), [right, right / Number(a)]);
+        } else {
+          const passage = q.prompt.en.split('\n\n')[0];
+          assert(q.options.every(opt => passage.includes(opt.en)));
+          equal(q.options[q.answer].en, q.evidenceQuote);
+        }
+      }
+    }
+  });
+
+  await test('分步错答触发探查，矛盾或缺失的证据不会被当成已证实的错误', () => {
+    const spec = { ...AI.sampleBatch('L2')[0], format: 'calculation' };
+    const q = globalThis.EachVeyaSkills.decorateEquation(AI.makeQuestion(spec), spec);
+    equal(Coach.mistakeFocus(q, Core.evaluateAnswer(q, ['25','6'])), 'balance');
+    equal(Coach.mistakeFocus(q, Core.evaluateAnswer(q, ['48/2','8'])), 'coefficient');
+    equal(Coach.mistakeFocus(q, Core.evaluateAnswer(q, ['24','6'])), '');
+    equal(Coach.mistakeFocus(q, { correct:false, response:[''] }), '');
+    const higher = { ...AI.sampleBatch('L3')[1], format:'calculation' };
+    const grouped = globalThis.EachVeyaSkills.decorateEquation(AI.makeQuestion(higher), higher);
+    equal(Coach.mistakeFocus(grouped, Core.evaluateAnswer(grouped, ['88','99'])), '');
+  });
+
+  await test('学习中心可做双语专项，阅读证据在提交后出现，旧记录可带入专项复测', async () => {
+    await resetUi();
+    await go('plan', '[data-action="lesson"]');
+    click('[data-action="lesson"][data-subject="english"]');
+    await waitElement('#question-title');
+    const question = current();
+    assert(question.purpose === 'lesson' && !document.querySelector('.feedback q'));
+    click('[data-choice="' + ((question.answer + 1) % 4) + '"]');
+    click('[data-action="grade"]');
+    equal(element('.feedback q').textContent, question.evidenceQuote);
+    assert(element('.feedback a[href="#coach/text-evidence"]'));
+    equal(Coach.assessment(read(), questions)['text-evidence'].status, 'possible');
+    await resetUi();
+    await go('plan', '[data-action="lesson"]');
+    click('[data-action="lesson"][data-subject="math"]');
+    await waitElement('#numeric-answer-form');
+    const item = current();
+    element('#numeric-0').value = String(item.fields[0].expected + 1);
+    element('#numeric-1').value = String(item.fields[1].expected);
+    click('button[form="numeric-answer-form"]');
+    assert(element('.feedback a[href="#coach/balance"]'));
+    equal(Coach.assessment(read(), questions).balance.status, 'possible');
+    const old = { ...read(), version:6 };
+    equal(Backup.parse(Backup.serialize(old), questions).attempts[0].response, old.attempts[0].response);
+    await resetUi();
+  });
+
+  await test('不同情境下独立作答才安排跨日新题，复测到期前不显示入口', async () => {
+    await resetUi();
+    let state = Core.createState();
+    const at = new Date().toISOString();
+    const ids = globalThis.EachVeyaLessons.roundIds(state, 'english');
+    state = start({ subject:'english', ids, count:3 }, state);
+    for (const id of ids) state = Core.advanceSession(Core.gradeAnswer(state, questions, byId.get(id).answer, at), questions, at);
+    const record = Coach.assessment(state, questions)['text-evidence'];
+    equal(record.status, 'scheduled');
+    const next = Coach.focusIds(state, 'text-evidence', 'spaced', 1, record);
+    equal(next.length, 1);
+    equal(byId.get(next[0]).purpose, 'transfer');
+    assert(!ids.some(id => byId.get(id).lessonGroup === byId.get(next[0]).lessonGroup));
+    Core.saveState(localStorage, key, state);
+    replayStorage(key);
+    await go('coach/text-evidence', '.study-details');
+    assert(!document.querySelector('[data-action="focus-practice"][data-mode="spaced"]'));
     await resetUi();
   });
 

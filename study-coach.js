@@ -30,6 +30,7 @@
     const firstAttempts = new Set();
     const checks = new Map();
     const scienceIndependent = new Map();
+    const lessonContexts = new Map();
     const events = attempts.map(attempt => ({ time: Date.parse(attempt.at), attempt }));
     for (const session of state.sessions.filter(session => session.focus && Core.focusModes.includes(session.mode))) {
       const time = Date.parse(session.completedAt);
@@ -47,9 +48,24 @@
         firstAttempts.add(question.id);
         const marks = attempt.focus ? [attempt.focus] : question.focus || [];
         if (fresh) for (const focus of marks) entries[focus].seen++;
-        const likely = question.errors?.[attempt.choice];
+        const likely = mistakeFocus(question, attempt);
+        if (fresh && question.purpose === 'lesson' && attempt.mode === 'practice' && attempt.correct && attempt.hinted === false) {
+          for (const focus of marks) {
+            const contexts = lessonContexts.get(focus) || new Set();
+            contexts.add(question.lessonGroup);
+            lessonContexts.set(focus, contexts);
+            const entry = entries[focus];
+            entry.lessonLevel = question.level;
+            if (contexts.size >= 2 && entry.status === 'unassessed') {
+              entry.status = 'scheduled';
+              entry.due = dayAt(date, 1);
+              entry.interval = 1;
+            }
+          }
+        }
         if (!attempt.correct && likely && (!attempt.focus || attempt.focus === likely) && !Core.focusModes.includes(attempt.mode)) {
           const entry = entries[likely];
+          if (question.purpose === 'lesson') entry.lessonLevel = question.level;
           if (entry.status !== 'confirmed') entry.status = 'possible';
           entry.due = day;
           entry.interval = 0;
@@ -123,6 +139,19 @@
       const selected = (related.length >= count ? related : options).slice(0, count);
       return selected.length === count ? selected.map(question => question.id) : [];
     }
+    if (mode === 'spaced' && record?.lessonLevel) {
+      const reserved = questions.filter(q => q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus) && !used.has(q.id));
+      return reserved.length >= count ? reserved.slice(0, count).map(q => q.id) : [];
+    }
+    if (mode === 'retake' && record?.lessonLevel) {
+      const chosen = [];
+      for (const q of questions) {
+        if (q.purpose !== 'lesson' || q.level !== record.lessonLevel || !q.focus.includes(focus) || used.has(q.id)) continue;
+        if (!chosen.some(other => other.lessonGroup === q.lessonGroup)) chosen.push(q);
+        if (chosen.length === count) return chosen.map(item => item.id);
+      }
+      return [];
+    }
     const options = questions.filter(question => question.variant && question.focus.includes(focus) && !used.has(question.id));
     const selected = [];
     if (mode === 'probe') {
@@ -136,9 +165,7 @@
     return selected.length === count ? selected.map(question => question.id) : [];
   }
 
-  function mistakeFocus(question, attempt) {
-    return attempt.correct ? '' : question.errors?.[attempt.choice] || '';
-  }
+  const mistakeFocus = Core.mistakeFocus;
 
   function prerequisiteTrail(focus, profile) {
     const visited = new Set([focus]);
