@@ -4,6 +4,7 @@
   const Core = globalThis.SmartStudyCore;
   const Learning = globalThis.SmartStudyLearning;
   const Science = globalThis.EachVeyaScience;
+  const Pilot = globalThis.EachVeyaPilot;
   const { skills } = globalThis.EachVeyaSkills;
   const { topics, topicsBySubject, subjects } = globalThis.SmartStudyData;
 
@@ -88,6 +89,10 @@
     roadmapPractised: ['练过 {n} 道不同题', '{n} distinct questions tried'],
     roadmapVerified: ['{n} 个子技能通过复测', '{n} skills passed a check'],
     roadmapGuide: ['学这节', 'Guide'],
+    pilotRoute: ['试点学习路线', 'Pilot learning path'],
+    pilotPrerequisites: ['学习顺序', 'Learning sequence'],
+    pilotPending: ['题单待教师复核，试学入口暂未开放。', 'The questions are awaiting teacher review. The pilot is currently closed.'],
+    pilotStartingLater: ['复核已完成，试学入口暂未开放。', 'The questions have been reviewed. The pilot is currently closed.'],
     report: ['学习报告', 'Study report'], reportIntro: ['根据已提交的作答比较表现，并查看下一步可练的知识点。', 'Compare submitted answers and choose what to practise next.'],
     reportToday: ['今天', 'Today'], reportWeek: ['近 7 天', 'Last 7 days'], reportMonth: ['近 30 天', 'Last 30 days'], reportQuarter: ['近 90 天', 'Last 90 days'],
     reportFilters: ['报告时段', 'Report period'], reportTime: ['记录到的作答时间', 'Observed answering time'],
@@ -275,6 +280,19 @@
       </section>`;
     }
 
+    function renderPilot(subject) {
+      const route = Pilot?.routes[subject];
+      if (!route) return '';
+      const approved = route.stages.every(stage => stage.items.every(item => item.review === 'approved'));
+      return `<details class="study-details" id="pilot-path">
+        <summary>${t('pilotRoute')} · ${text(topics[route.topic])} · ${escapeHtml(route.level)}</summary>
+        <p class="field-help">${t(approved ? 'pilotStartingLater' : 'pilotPending')}</p>
+        <p><strong>${t('pilotPrerequisites')}</strong></p>
+        <ol>${Pilot.skillPath(route).map(skill => `<li>${text(skill.label)}</li>`).join('')}</ol>
+        <ol>${route.stages.map(stage => `<li>${text(stage.label)}</li>`).join('')}</ol>
+      </details>`;
+    }
+
     function renderRoadmap(state, catalog, preferredSubject) {
       const subject = Object.hasOwn(topicsBySubject, preferredSubject) ? preferredSubject : 'english';
       const rows = Coach.roadmap(state, catalog, subject);
@@ -295,6 +313,7 @@
         <div class="filters" role="group" aria-label="${t('subjects')}">${subjects.filter(item => item.available).map(item =>
           `<button type="button" class="filter-button ${item.id === subject ? 'active' : ''}" aria-pressed="${item.id === subject}"
             data-action="roadmap-subject" data-subject="${item.id}">${text(item.label)}</button>`).join('')}</div>
+        ${renderPilot(subject)}
         ${branch('')}
       </section>`;
     }

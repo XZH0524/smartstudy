@@ -1094,6 +1094,28 @@
     equal(element('#subject').value, subject);
   }
 
+  await test('五科知识路线显示试点步骤、前置技能和真实审核状态', async () => {
+    await resetUi();
+    await go('plan', '#pilot-path');
+    change('language', 'zh');
+    for (const { id } of subjects) {
+      click(`[data-action="roadmap-subject"][data-subject="${id}"]`);
+      const route = globalThis.EachVeyaPilot.routes[id];
+      const panel = element('#pilot-path');
+      panel.open = true;
+      assert(panel.querySelector('summary').textContent.includes(topics[route.topic].zh), id);
+      assert(panel.textContent.includes('试学入口暂未开放'), id);
+      equal([...panel.querySelectorAll('ol:last-child li')].map(node => node.textContent),
+        ['起点测评', '分步讲解', '专项练习', '隔天复测', '第 7 天复测']);
+      assert(!panel.querySelector('button, a'), id);
+    }
+    change('language', 'en');
+    assert(element('#pilot-path').textContent.includes('Day 7 check'));
+    assert(element('#pilot-path').textContent.includes('awaiting teacher review'));
+    fitsViewport();
+    await resetUi();
+  });
+
   async function answerUi(correct) {
     const item = current();
     if (item.fields) {
