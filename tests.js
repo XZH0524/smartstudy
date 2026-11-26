@@ -1351,6 +1351,44 @@
     fitsViewport();
   });
 
+  await test('五科均可从双语典型题直接热身，热身不产生起点评级，测评后按领域推荐练习', async () => {
+    const keys = { math: ['12','3x + 4 = 25'], physics: ['m/s','15 min'], chemistry: ['Salt','10/100 × 100%'],
+      biology: ['Carbon dioxide','Light helps the leaf accumulate starch'], english: ['4:15','Outside the library'] };
+    for (const { id } of subjects) {
+      await resetUi();
+      await openSubject(id);
+      const pair = globalThis.EachVeyaLessons.starterPairs[id];
+      equal(pair.map(q => q.options[q.answer].en), keys[id]);
+      assert(element('.starter-pair').open && pair.every(q => element('.starter-pair').textContent.includes(q.prompt.zh)));
+      change('language', 'en');
+      assert(pair.every(q => element('.starter-pair').textContent.includes(q.prompt.en)));
+      equal(read().attempts.length, 0);
+      click('[data-action="starter-pair"]');
+      await waitElement('#question-title');
+      equal(read().active.questionIds, pair.map(q => q.id));
+      await finishQuestions(q => q.id === pair[0].id);
+      equal(Core.getStats(read(), questions, id).total, 2);
+      assert(Core.getMistakes(read(), questions).some(row => row.question.id === pair[1].id));
+      equal(Learning.latestPlacement(read(), id), null);
+      assert(Object.values(Learning.subjectProfile(read(), id)).every(row => row.basis === 'starting'));
+      assert(element('.result-buttons [data-action="diagnostic"]'));
+      if (id === 'math') {
+        click('.result-buttons [data-action="diagnostic"]');
+        await waitElement('#question-title');
+        await finishQuestions(q => q.topic === 'algebra');
+        click('[data-action="recommended-set"]');
+        await waitElement('#question-title');
+        const active = read().active;
+        equal(active.questionIds.length, 5);
+        const profile = Learning.mathProfile(read());
+        assert(active.questionIds.every(key => byId.get(key).level === profile[byId.get(key).topic].level));
+      }
+      fitsViewport();
+    }
+    await resetUi();
+    change('language', 'en');
+  });
+
   await test('数学起点测试完成 10 题后显示分领域推荐，设置、作答和结果标题对齐', async () => {
     const left = headingLeft();
     await openSubject('math');

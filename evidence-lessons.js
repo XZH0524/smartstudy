@@ -234,6 +234,75 @@
   ]);
   questions.push(...items);
 
+  // These pairs illustrate the change in demand within one topic. They can be
+  // previewed before answering, so they are kept out of placement and adaptive evidence.
+  const starterPairs = {};
+  const same = value => bi(value, value);
+  function starter(subject, topic, level, skill, task, prompt, options, answer, explanation) {
+    const id = 'starter-' + subject + '-' + level;
+    const item = { id, subject, topic, level, purpose: 'starter', focusOnly: true, skill, curriculumRefs: [],
+      ...(subject === 'english' ? { track: 'cefr' } : {}), task, prompt, options, answer, explanation };
+    (starterPairs[subject] ||= []).push(item);
+    questions.push(item);
+  }
+
+  starter('math', 'algebra', 'L1', 'calculation', bi('还原一个数', 'Undo one operation'),
+    bi('一个数加上 7 等于 19。这个数是多少？', 'A number plus 7 equals 19. What is the number?'),
+    ['7','12','19','26'].map(same), 1,
+    bi('从 19 减去多出的 7，得到 12。代回去检验，12 + 7 = 19。', 'Subtract 7 from 19 to get 12. Check by adding it back: 12 + 7 = 19.'));
+  starter('math', 'algebra', 'L2', 'application', bi('从总价列方程', 'Build an equation from a total'),
+    bi('3 本同价笔记本加一个 4 元的文件夹，共 25 元。设每本笔记本 x 元，哪个方程正确？',
+      'Three equally priced notebooks and a 4-yuan folder cost 25 yuan altogether. If a notebook costs x yuan, which equation fits?'),
+    ['3(x + 4) = 25','x + 3 + 4 = 25','3x + 4 = 25','4x + 3 = 25'].map(same), 2,
+    bi('三本笔记本共 3x 元，文件夹只买了一个，所以只加一次 4。每本 7 元时，3 × 7 + 4 = 25。',
+      'The notebooks cost 3x together. Add 4 once for the single folder. At 7 yuan each, 3 × 7 + 4 = 25.'));
+  starter('physics', 'average-speed', 'L1', 'application', bi('认出速率单位', 'Identify a speed unit'),
+    bi('体育课记录百米跑的路程和用时。用米记录路程、用秒记录时间，平均速率用哪个单位？',
+      'A PE class records a sprint distance in metres and the time in seconds. Which unit gives the average speed?'),
+    ['m','s','m·s','m/s'].map(same), 3,
+    bi('平均速率等于路程除以时间，因此单位是米每秒（m/s）。', 'Average speed is distance divided by time, so the unit is metres per second (m/s).'));
+  starter('physics', 'average-speed', 'L2', 'reasoning', bi('判断计时范围', 'Decide which time counts'),
+    bi('小宁骑车 8 分钟，停车 2 分钟，再骑 5 分钟。求从出发到抵达的平均速率，总路程应除以多长时间？',
+      'A cyclist rides for 8 minutes, stops for 2, then rides for 5. Which time divides the total distance to give average speed from departure to arrival?'),
+    ['10 min','13 min','15 min','5 min'].map(same), 2,
+    bi('从出发到抵达经过 8 + 2 + 5 = 15 分钟。停车时路程不增加，但时间仍在走。',
+      'The whole trip takes 8 + 2 + 5 = 15 minutes. During the stop, distance stays the same while time passes.'));
+  starter('chemistry', 'mass-percentage', 'L1', 'application', bi('分清溶质和溶剂', 'Identify the solute'),
+    bi('把 5 克食盐完全溶在 95 克水中。这杯盐水里的溶质是什么？',
+      'Five grams of table salt dissolve completely in 95 grams of water. What is the solute?'),
+    [bi('食盐','Salt'),bi('水','Water'),bi('盐水','Salt solution'),bi('烧杯','Beaker')], 0,
+    bi('被溶解的食盐是溶质，用来溶解食盐的水是溶剂。', 'Salt is the substance being dissolved, so it is the solute. Water is the solvent.'));
+  starter('chemistry', 'mass-percentage', 'L2', 'reasoning', bi('选出百分比的分母', 'Choose the mass in the denominator'),
+    bi('把 10 克糖完全溶在 90 克水中，没有质量损失。哪个算式表示糖的质量百分比？',
+      'Ten grams of sugar dissolve in 90 grams of water with no mass lost. Which expression gives the sugar percentage by mass?'),
+    ['10/90 × 100%','90/100 × 100%','90/10 × 100%','10/100 × 100%'].map(same), 3,
+    bi('分母是整杯糖水的质量，即 10 + 90 = 100 克。糖占 10/100 × 100% = 10%。',
+      'Use the mass of the entire solution as the denominator: 10 + 90 = 100 g. Sugar makes up 10% by mass.'));
+  starter('biology', 'plant-energy', 'L1', 'application', bi('辨认光合原料', 'Recognise a photosynthesis input'),
+    bi('一片绿叶在光照下进行光合作用。它利用空气中的哪种气体合成糖？',
+      'A green leaf is photosynthesising in the light. Which gas from the air does it use to make sugars?'),
+    [bi('氧气','Oxygen'),bi('氮气','Nitrogen'),bi('二氧化碳','Carbon dioxide'),bi('氦气','Helium')], 2,
+    bi('光合作用利用光能，把二氧化碳和水转化为糖，并释放氧气。',
+      'Photosynthesis uses light energy to make sugars from carbon dioxide and water, releasing oxygen.'));
+  starter('biology', 'plant-energy', 'L2', 'reasoning', bi('比较有光与遮光的叶片', 'Interpret a light comparison'),
+    bi('一株植物先在暗处耗尽叶中淀粉，再把同一片绿叶的一半遮光，另一半照光。稍后只有照光部分检出淀粉。这一结果支持哪种解释？',
+      'After a plant is destarched in the dark, half of one green leaf is covered and the other half is lit. Later only the lit half tests positive for starch. Which explanation fits?'),
+    [bi('遮光会增加淀粉','Covering the leaf increases starch'),bi('光照有助于叶片积累淀粉','Light helps the leaf accumulate starch'),
+      bi('两部分一定含有相同质量的淀粉','Both halves must contain equal masses of starch'),bi('叶片只在暗处合成淀粉','Leaves make starch only in darkness')], 1,
+    bi('比较的是同一片叶的两部分，开始时都没有可检出的淀粉。只有照光部分积累了可检出的淀粉，支持光照起作用。',
+      'The two halves started with no detectable starch. Only the lit half accumulated detectable starch, supporting a role for light.'));
+  starter('english', 'reading', 'A1', 'application', bi('从通知找时间', 'Find a time in a notice'),
+    bi('读通知：“Art club starts at 4:15 on Friday.” 美术社几点开始？',
+      'Read the notice: “Art club starts at 4:15 on Friday.” What time does the club start?'),
+    ['3:45','4:00','4:15','5:15'].map(same), 2,
+    bi('starts at 后面直接给出开始时间 4:15。Friday 说的是星期几。', 'The words “starts at” introduce the time, 4:15. Friday tells you the day.'));
+  starter('english', 'reading', 'A2', 'reasoning', bi('读懂地点变更', 'Follow a change of place'),
+    bi('读留言：“We usually meet in the gym. Today it is closed, so meet outside the library instead.” 今天应在哪里集合？',
+      'Read the message: “We usually meet in the gym. Today it is closed, so meet outside the library instead.” Where should you meet today?'),
+    [bi('体育馆里','Inside the gym'),bi('图书馆外','Outside the library'),bi('图书馆里','Inside the library'),bi('体育馆外','Outside the gym')], 1,
+    bi('usually 提到平时的地点。instead 表示今天改到别处，outside the library 指图书馆外。',
+      '“Usually” introduces the old arrangement. “Instead” signals the change, and “outside the library” names today’s meeting place.'));
+
   function roundIds(state, subject) {
     const last = new Map();
     state.attempts.forEach((attempt, index) => last.set(attempt.questionId, index));
@@ -246,5 +315,5 @@
       return true;
     }).map(q => q.id);
   }
-  globalThis.EachVeyaLessons = { roundIds, workshops };
+  globalThis.EachVeyaLessons = { roundIds, workshops, starterPairs };
 })();

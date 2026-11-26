@@ -26,7 +26,7 @@
   });
   const workshopSubjects = new Set(data?.questions?.filter(question => !question.retired && question.purpose === 'followup').map(question => question.subject));
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
-    !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
+    !available || (Lessons.workshops?.[id] && Lessons.starterPairs?.[id]?.length === 2 && workshopSubjects.has(id)));
   if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 3
     || Core?.VERSION !== 9 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
@@ -69,13 +69,14 @@
     local: ['学习记录保存在此浏览器', 'Study data stays in this browser'],
     disciplines: ['英语、数学与科学', 'English, mathematics & science'],
     welcomeSub: ['面向全球中学生的练习平台，涵盖英语、数学、物理、化学与生物。', 'English and mathematics practice for secondary school students, alongside physics, chemistry and biology.'],
-    workspace: ['练习概览', 'Practice overview'], heroTitle: ['选择知识点和难度', 'Choose a topic and level'],
-    heroText: ['选择知识点开始练习，查看解析或复习错题。', 'Practise a topic, explore an explanation or revisit a mistake.'],
+    workspace: ['练习概览', 'Practice overview'], heroTitle: ['从哪一科开始？', 'Which subject would you like to try?'],
+    heroText: ['选一门课，做起点测试找难度，也可以先试两道典型题，看每道题的解析。', 'Choose a subject to find your starting level, or try two examples with an explanation after each answer.'],
+    chooseSubject: ['选择科目', 'Choose a subject'],
     resume: ['继续上次练习', 'Continue practice'], answered: ['累计作答', 'Answers submitted'], accuracy: ['作答正确率', 'Answer accuracy'],
     pending: ['待复习错题', 'Mistakes to revisit'], questionsUnit: ['题', 'questions'], noData: ['暂无数据', 'No data yet'], subjects: ['选择你的科目', 'Choose your subject'],
     available: ['{n} 个科目可练习', '{n} subjects ready to explore'], questionBank: ['{n} 道练习题', '{n} practice questions'], coverage: ['累计作答 {n} 次', '{n} answers submitted'],
     start: ['开始练习', 'Start practice'], lastWeek: ['最近 7 天', 'The last 7 days'], activity: ['每日作答', 'Daily answers'],
-    setupTitle: ['选择适合你的练习', 'Find your next practice'], setupSub: ['选择科目、知识点和等级，或按推荐开始。', 'Choose a subject, topic and level, or start with a recommendation.'],
+    setupTitle: ['选择适合你的练习', 'Find your next practice'], setupSub: ['不知道选哪个等级？选好科目就能做起点测试。', 'Unsure which level to pick? Choose a subject and take its placement check.'],
     settings: ['练习设置', 'Practice settings'], subject: ['科目', 'Subject'], difficulty: ['练习等级', 'Practice level'], topic: ['知识点', 'Topic'],
     allTopics: ['所有知识点', 'All topics'], autoLevel: ['按知识点推荐', 'Recommended by topic'],
     count: ['题目数量', 'Number of questions'],
@@ -105,7 +106,13 @@
     diagnosticReadyMath: ['已有各领域的起点推荐，之后的练习会继续调整。', 'You have starting recommendations by domain. Practice helps refine them.'],
     diagnosticReadyEnglish: ['起点测试建议从 {level} 开始练习。也可以手选 A1–C2。', 'The placement check suggests starting at {level}. You can also choose A1–C2 yourself.'],
     startDiagnostic: ['开始起点测试', 'Start placement check'], retakeDiagnostic: ['重做起点测试', 'Retake placement check'],
-    skipPlacement: ['跳过起点测试', 'Skip placement check'],
+    skipPlacement: ['自己选练习', 'Choose my own practice'],
+    findStart: ['帮我找起点 · {n} 题', 'Find my starting level · {n} questions'],
+    compareLevels: ['看典型题，比较 {first} 和 {second}', 'Compare {first} and {second} examples'],
+    tryExamples: ['试做这两道题', 'Try both examples'],
+    starterResult: ['典型题热身', 'Level examples'],
+    recommendedSet: ['按推荐练 5 题', 'Practise 5 at my suggested levels'],
+    defaultTrial: ['自动 · 先试 {level}', 'Automatic · start at {level}'],
     diagnosticSubmitted: ['答案已提交。完成起点测试后可查看解析。', 'Answer submitted. You can review the explanations after the placement check.'],
     diagnosticFinished: ['起点测试完成', 'Placement check complete'],
     diagnosticComplete: ['推荐的练习起点', 'Recommended starting levels'],
@@ -598,7 +605,7 @@
     const days = Core.dailyStats(state);
     const max = Math.max(5, ...days.map(day => day.total));
     return `${heading(t('brand'), t('welcomeSub'))}
-      <section class="hero"><div class="hero-copy"><h2>${t('heroTitle')}</h2><p>${t('heroText')}</p><a class="button secondary" href="#plan">${t('roadmap')}</a></div>
+      <section class="hero"><div class="hero-copy"><h2>${t('heroTitle')}</h2><p>${t('heroText')}</p>${button(t('chooseSubject'), 'setup', 'secondary')}</div>
         ${study.renderToday(Coach.learningPlan(state, questions), state.active, true)}</section>
       <section class="stats-grid" aria-label="${t('workspace')}">${statCard('answered', stats.total, t('questionsUnit'), '▤')}${statCard('accuracy', stats.accuracy === null ? '—' : `${stats.accuracy}%`, stats.accuracy === null ? t('noData') : '', '◎')}${statCard('pending', stats.mistakes, t('questionsUnit'), '▧')}</section>
       <section><div class="section-heading"><h2>${t('subjects')}</h2><span class="section-note">${t('available', { n: subjects.filter(subject => subject.available).length })}</span></div><div class="subject-grid">${subjects.filter(subject => subject.available).map(subject => {
@@ -628,10 +635,18 @@
     return `<section class="placement-panel" aria-labelledby="placement-heading">
       <div><h3 id="placement-heading">${t('diagnosticMode')}</h3><p>${summary}</p></div>
       <div class="inline-actions">
-        ${button(t(placement ? 'retakeDiagnostic' : 'startDiagnostic'), 'diagnostic', firstVisit ? '' : 'secondary', `data-subject="${subject}"`)}
+        ${button(placement ? t('retakeDiagnostic') : t('findStart', { n: Learning.diagnosticIds(subject).length }), 'diagnostic', placement ? 'secondary' : '', `data-subject="${subject}"`)}
         ${firstVisit ? button(t('skipPlacement'), 'skip-placement', 'secondary') : ''}
       </div>
     </section>`;
+  }
+
+  function renderStarterPair(subject, expanded) {
+    const pair = Lessons.starterPairs[subject];
+    return `<details class="study-details starter-pair" ${expanded ? 'open' : ''}><summary>${t('compareLevels', { first: pair[0].level, second: pair[1].level })}</summary>
+      ${pair.map(q => `<p><strong>${escapeHtml(q.level)} · ${text(q.task)}</strong><br>${text(q.prompt)}</p>`).join('')}
+      <div class="inline-actions">${button(t('tryExamples'), 'starter-pair', 'secondary', `data-subject="${subject}"`)}</div>
+    </details>`;
   }
 
   function renderIELTS() {
@@ -738,7 +753,7 @@
     const number = count === 'all' ? pool.length : Math.min(Number(count), pool.length);
     const unfinished = state.active;
     const profile = topic && Learning.subjectProfile(state, subject, placement);
-    const autoLabel = topic ? t('practiceLevel', { level: profile[topic].level }) : t('autoLevel');
+    const autoLabel = topic ? t(profile[topic].basis === 'starting' ? 'defaultTrial' : 'practiceLevel', { level: profile[topic].level }) : t('autoLevel');
     const subjectOptions = subjects.filter(item => item.available).map(item => [item.id, text(item.label)]);
     const topicOptions = [['', t('allTopics')], ...topicsBySubject[subject].map(id => [id, science ? `${text(Science.topics[id].domainLabel)} · ${text(topics[id])}` : text(topics[id])])];
     const levelOptions = [['auto', autoLabel], ...levels[subject].map(item => [item, english ? item : `${item} · ${text(tierLabels[item])}`])];
@@ -761,6 +776,7 @@
         ${english ? `<div class="filters study-tracks">${[['cefr', 'cefrTrack'], ['ielts', 'ieltsTrack']].map(([id, label]) =>
           `<button type="button" class="filter-button ${id === track ? 'active' : ''}" data-action="track" data-track="${id}" aria-pressed="${id === track}">${t(label)}</button>`).join('')}</div>` : ''}
         ${showIELTS ? renderIELTS() : renderPlacementPanel(subject, placement, firstVisit)}
+        ${!showIELTS && !curriculum && !topic ? renderStarterPair(subject, !placement) : ''}
         ${!showIELTS && !curriculum ? `<div class="inline-actions">
           ${button(t(Lessons.workshops[subject]), 'lesson', 'secondary', `data-subject="${subject}"`)}
         </div>` : ''}
@@ -856,6 +872,7 @@
   }
 
   function modeLabel(mode, question) {
+    if (mode === 'practice' && question?.purpose === 'starter') return t('starterResult');
     if (mode === 'spaced' && question?.purpose === 'followup') return t('lessonCheck');
     if (accountEnabled && mode === 'science-ai') return t('sciencePreviewMode');
     return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode',
@@ -1018,7 +1035,10 @@
         <span class="section-note">${t('roundAccuracy')}</span>
         <p>${t('resultSub', { correct: session.correct, total: session.questionIds.length })}</p>
         <div class="result-buttons">
-          ${button(t('newPractice'), 'subject', '', `data-subject="${session.subject}"`)}
+          ${placement ? button(t('recommendedSet'), 'recommended-set', '', `data-subject="${session.subject}"`)
+            : !Learning.latestPlacement(state, session.subject) && byId.get(session.questionIds[0])?.purpose === 'starter'
+              ? button(t('findStart', { n: Learning.diagnosticIds(session.subject).length }), 'diagnostic', '', `data-subject="${session.subject}"`) : ''}
+          ${button(t('newPractice'), 'subject', placement ? 'secondary' : '', `data-subject="${session.subject}"`)}
           ${wrong.length ? button(t('reviewWrong'), 'review-result', 'secondary', `data-session="${escapeHtml(session.id)}"`) : button(t('records'), 'records', 'secondary')}
         </div>
       </section>
@@ -1450,6 +1470,14 @@
       }
       if (action === 'resume') { cancelAiRequest(); forceSetup = false; go('practice'); }
       if (action === 'setup') { forceSetup = true; go('practice'); }
+      if (action === 'starter-pair') {
+        const subject = target.dataset.subject;
+        const ids = Lessons.starterPairs[subject].map(question => question.id);
+        await begin({ subject, ids, count: ids.length });
+      }
+      if (action === 'recommended-set') {
+        await begin({ subject: target.dataset.subject, level: 'auto', count: 5 });
+      }
       if (action === 'subject' || action === 'topic-practice') openSetup(target.dataset.subject, target.dataset.topic);
       if (action === 'ai-start') await beginAi(target.dataset.level);
       if (action === 'ai-sample' && AI.LEVELS.includes(target.dataset.level)) {
@@ -1572,7 +1600,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.25';
+    script.src = 'tests.js?v=2.26';
     document.body.appendChild(script);
   }
 })();
