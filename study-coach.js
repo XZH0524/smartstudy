@@ -251,13 +251,13 @@
         const task = pending.get(attempt.focus);
         if (!task || task.due > dayAt(new Date(submitted)) || !isFollowupFor(question, task.source, attempt.focus)) continue;
         const independent = attempt.correct && attempt.hinted === false;
-        results.push({ focus: attempt.focus, date: dayAt(date), independent, sessionId: attempt.sessionId, equation: Boolean(equation) });
+        const step = mistakeFocus(question, attempt);
+        const firstStepCorrect = Boolean(equation) && attempt.focus === 'balance' && step === 'coefficient' && attempt.hinted === false;
+        results.push({ focus: attempt.focus, date: dayAt(date), independent, sessionId: attempt.sessionId,
+          equation: Boolean(equation), firstStepCorrect });
         pending.delete(attempt.focus);
-        if (!independent) {
-          schedule(attempt.focus, question, date);
-          const step = mistakeFocus(question, attempt);
-          if (step && step !== attempt.focus) schedule(step, question, date);
-        }
+        if (!independent && !firstStepCorrect) schedule(attempt.focus, question, date);
+        if (step && step !== attempt.focus) schedule(step, question, date);
       }
     }
     return { pending, used, read, equations, results };
@@ -417,11 +417,11 @@
       daily.push({ date, end: dayAt(now, end), ...counts(period) });
     }
     const checks = new Map();
-    for (const { focus, date, independent, equation } of lessonHistory(state, byId, now).results) {
+    for (const { focus, date, independent, equation, firstStepCorrect } of lessonHistory(state, byId, now).results) {
       if (date < start) continue;
       const row = checks.get(focus) || { focus, total: 0, independent: 0 };
       checks.set(focus, { ...row, last: date, total: row.total + 1, independent: row.independent + Number(independent),
-        ...(equation ? { lastIndependent: independent } : {}) });
+        ...(equation ? { lastIndependent: independent, lastFirstStepCorrect: firstStepCorrect } : {}) });
     }
     return {
       recent: counts(recent), previous: counts(previous), topics, daily, checks: [...checks.values()].sort((a, b) => b.last.localeCompare(a.last)),

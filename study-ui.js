@@ -35,6 +35,7 @@
     lessonUnavailable: ['这个专项暂时没有未做过的新题。', 'There are no unseen check questions left for this workshop.'],
     lessonPassed: ['本次新题答对了。', 'You answered this new question correctly.'],
     lessonIndependent: ['这道跨日新题已独立答对。', 'You answered this fresh next-day question correctly without hints.'],
+    lessonFirstStepCorrect: ['第一步已独立做对。接下来练习怎样求出未知数。', 'You completed the first step without hints. Next, practise solving for the unknown.'],
     lessonNotCounted: ['作答已保存。这道题未计入跨日独立复测。', 'Your answer was saved. It does not count as an independent next-day check.'],
     lessonHinted: ['这次用了提示。隔天可以独立做一道新题。', 'You used a hint. Try another new question on your own the next day.'],
     lessonRetry: ['先看这一步的提示，隔天再用一道新题试试。', 'Review the hint for this step and try another new question the next day.'],
@@ -113,6 +114,7 @@
     reportChecks: ['跨日复测表现', 'Next-day check results'],
     reportCheckStat: ['独立答对 {independent}/{total} 次 · 最近 {date}', '{independent}/{total} checks correct without hints · Latest {date}'],
     reportLastIndependent: ['最近一题已独立答对。', 'Most recent question: correct without hints.'],
+    reportLastFirstStepCorrect: ['最近一题的第一步已独立做对，第二步还需练习。', 'Most recent question: first step correct without hints. Keep practising the second step.'],
     reportLastNeedsPractice: ['最近一题未独立答对。', 'Most recent question: no independent correct answer.'],
     reportMistakeCount: ['{attempts} 次线索，来自 {distinct} 道不同题', '{attempts} clues across {distinct} distinct questions'],
     reportMistakeKind: ['{kind} · {n} 次', '{kind} · {n} times'],
@@ -222,9 +224,10 @@
         const answer = state.attempts.find(attempt => attempt.sessionId === session.id && attempt.questionId === checkQuestion.id);
         const result = Coach.lessonCheckResult(state, catalog, session);
         return `<section class="panel study-panel focus-result"><h2>${t('lessonCheck')}</h2>
-          ${answer && !answer.correct ? renderClue(checkQuestion, answer, tasks) : ''}
           <p>${t(!result ? 'lessonNotCounted' : result.independent ? result.equation ? 'lessonIndependent' : 'lessonPassed'
-            : task?.id ? session.correct ? 'lessonHinted' : 'lessonRetry' : 'lessonUnavailable')}</p>
+            : result.firstStepCorrect ? 'lessonFirstStepCorrect'
+              : task?.id ? session.correct ? 'lessonHinted' : 'lessonRetry' : 'lessonUnavailable')}</p>
+          ${answer && !answer.correct ? renderClue(checkQuestion, answer, tasks) : ''}
           <a href="#plan/checks">${t('lessonOpen')}</a></section>`;
       }
       const record = Coach.assessment(state, catalog, new Date(session.completedAt))[session.focus];
@@ -405,7 +408,8 @@
           <ul class="study-skill-list">${report.checks.map(row => `<li><span class="section-note">${subjectName(skills[row.focus].subject)}</span>
             <a href="${coachUrl(row.focus)}">${text(skills[row.focus].label)}</a>
             <span class="field-help">${t('reportCheckStat', { ...row, date: formatDate(row.last) })}</span>
-            ${typeof row.lastIndependent === 'boolean' ? `<span class="field-help">${t(row.lastIndependent ? 'reportLastIndependent' : 'reportLastNeedsPractice')}</span>` : ''}</li>`).join('')}</ul></section>` : ''}
+            ${typeof row.lastIndependent === 'boolean' ? `<span class="field-help">${t(row.lastIndependent ? 'reportLastIndependent'
+              : row.lastFirstStepCorrect ? 'reportLastFirstStepCorrect' : 'reportLastNeedsPractice')}</span>` : ''}</li>`).join('')}</ul></section>` : ''}
         <section class="panel study-panel report-map"><h2>${t('reportMap')}</h2><p class="field-help">${t('reportSkillNote')}</p>
           <div class="study-grid">${Object.entries(topicsBySubject).map(([subject, ids]) => `<section><h3>${subjectName(subject)}</h3><ul class="study-skill-list">${ids.map(id => {
             const row = report.topics[id];

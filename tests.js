@@ -2026,6 +2026,42 @@
     assert(![ticket, tank, cards].some(q => Core.equationKey(q) === Core.equationKey(replacement)));
   });
 
+  await test('数学跨日复测做对第一步后，只预约仍出错的第二步，整题仍计为未答对', async () => {
+    await resetUi();
+    const yesterday = new Date();
+    yesterday.setHours(12, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const at = yesterday.toISOString();
+    const source = byId.get('lesson-equation-tickets-0');
+    const open = start({ subject: 'math', ids: [source.id], count: 1 });
+    const initial = source.fields.map((field, i) => String(field.expected + Number(i === 0)));
+    const history = Core.advanceSession(Core.gradeAnswer(open, questions, initial, at), questions, at);
+    Core.saveState(localStorage, key, history);
+    replayStorage(key);
+    await go('plan/checks', '[data-lesson-focus="balance"] [data-action="lesson-check"]');
+    click('[data-lesson-focus="balance"] [data-action="lesson-check"]');
+    await waitElement('#numeric-answer-form');
+    const item = current();
+    assert(Core.equationStructure(item) !== Core.equationStructure(source));
+    assert(!document.querySelector('[data-action="hint"]'));
+    item.fields.forEach((field, i) => { element('#numeric-' + i).value = String(field.expected + Number(i === 1)); });
+    click('button[form="numeric-answer-form"]');
+    click('[data-action="next"]');
+    await waitElement('.focus-result');
+    const completed = read();
+    equal(Coach.lessonChecks(completed, questions).map(task => task.focus), ['coefficient']);
+    assert(element('.focus-result').textContent.includes('第一步已独立做对'));
+    assert(element('.focus-result .mistake-clue a[href="#coach/coefficient"]'));
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const [next] = Coach.lessonChecks(completed, questions, tomorrow);
+    assert(next.ready && next.due === Core.localDate(tomorrow) && next.id !== item.id);
+    await go('report', '.report-checks');
+    assert(element('.report-checks').textContent.includes('独立答对 0/1 次'));
+    assert(element('.report-checks').textContent.includes('第一步已独立做对'));
+    await resetUi();
+  });
+
   await test('英语旧错题隔天在学习中心发起同类新题，答错时先看线索再约下一天', async () => {
     await resetUi();
     const yesterday = new Date();
