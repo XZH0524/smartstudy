@@ -597,7 +597,7 @@
     equal(report.topics.reading.passages, 1);
     equal(report.topics.reading.correct, 5);
 
-    const fresh = ['en-r01', 'en-r02', 'b400-english-r-library-card-2', 'b400-english-r-blue-route-4'];
+    const fresh = ['en-r01', 'en-r02', 'b400-english-r-library-card-2@2', 'b400-english-r-blue-route-4'];
     const advanced = answerPractice(restored, fresh, [true, false, true, true], laterTime);
     equal(Learning.englishProfile(advanced).reading.level, 'A2');
     equal(Learning.englishProfile(advanced).grammar.level, 'A1');
@@ -639,6 +639,28 @@
     assert(original.retired && !revised.retired);
     equal(Core.evaluateField(original.fields[0], 'dim').correct, false);
     equal(Core.evaluateField(revised.fields[0], 'DIM.').correct, true);
+  });
+
+  await test('复核题使用明确的新题干，旧题仍能按原答案续做', () => {
+    const cases = [
+      ['b400-english-v-A1-14', 'The sun has just risen', 'morning'],
+      ['b400-english-v-A1-18', 'too quiet', 'loudly'],
+      ['b400-english-v-C2-5', 'central to the case', 'salient'],
+      ['b400-english-v-C2-16', 'no verdict or objection', 'pointer'],
+      ['b400-english-g-calendar-prep-2', 'Thursday afternoons', 'on'],
+      ['fill-english-formal-word-form-6', 'ownership history', 'provenance'],
+      ['b400-biology-trait-frequency-both-alleles-L2-change-input', '25%', 'Stays the same']
+    ];
+    for (const [id, clue, answer] of cases) {
+      const old = byId.get(id);
+      const revised = byId.get(id + '@2');
+      assert(old.retired && !revised.retired && revised.originalId === id, id);
+      assert(!old.prompt.en.includes(clue) && revised.prompt.en.includes(clue), id);
+      const response = revised.fields ? [answer] : revised.options.findIndex(option => option.en === answer);
+      equal(Core.evaluateAnswer(revised, response).correct, true);
+      equal(Core.evaluateAnswer(old, old.fields ? [old.fields[0].expected] : old.answer).correct, true);
+      equal(Core.chooseQuestions(questions, { subject: old.subject, ids: [id, revised.id] }), [revised.id]);
+    }
   });
 
   await test('英语近期错题触发对应知识点建议，订正后从建议移除', () => {

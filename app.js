@@ -32,7 +32,7 @@
   const availableQuestions = new Set(data?.questions?.filter(question => !question.retired).map(question => question.id));
   const completePilots = typeof Pilot?.progress === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || Pilot.routes[id]?.stages.every(stage => stage.items.every(item => availableQuestions.has(item.questionId))));
-  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 3
+  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 4
     || Core?.VERSION !== 10 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup, schoolPractice].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
@@ -1685,7 +1685,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.29';
+    script.src = 'tests.js?v=2.30';
     document.body.appendChild(script);
   }
 })();

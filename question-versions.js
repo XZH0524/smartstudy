@@ -81,5 +81,60 @@
       'The first sentence says the museum sells tickets online. Also introduces the extra option of buying at the gate on holidays.')
   });
 
-  globalThis.EachVeyaQuestionVersions = { version: 3 };
+  for (const [id, stem, explanationZh, explanationEn, choices] of [
+    ['A1-14', 'The sun has just risen. In the early ___, I wash my face and get ready for school.',
+      '太阳刚升起，说明是清晨。early morning 表示一大早。',
+      'The sun has just risen, so it is early morning.'],
+    ['A1-18', 'Everyone in the back row says your voice is too quiet. Please speak more ___.',
+      'too quiet 说明声音太小，需要提高音量。loudly 表示大声地。',
+      'Too quiet points to volume. Speaking more loudly means raising your voice.', ['loudly', 'clearly', 'slowly', 'politely']],
+    ['C2-5', 'The witness offered a ___ distinction between being present and taking part. The court considered that difference central to the case.',
+      'central to the case 说明这一差别对案件很重要。salient 表示突出、重要。',
+      'Central to the case signals importance. A salient distinction is one that stands out as important.'],
+    ['C2-16', 'The link was a helpful ___ to another source, but it offered no verdict or objection of its own.',
+      '链接的作用是把读者引到另一个来源。pointer 在这里指指引或线索。',
+      'The link directs the reader to another source. A pointer can guide you to information without judging it.']
+  ]) {
+    const original = ids.get(`b400-english-v-${id}`);
+    revise(original.id, {
+      prompt: bilingual(`根据语境填空。\n${stem}`, `Choose the word or phrase that fits the context.\n${stem}`),
+      explanation: bilingual(explanationZh, explanationEn),
+      ...(choices ? { options: choices.map(value => bilingual(value, value)) } : {})
+    });
+  }
+
+  const weekday = 'Our weekly music class takes place ___ Thursday afternoons.';
+  revise('b400-english-g-calendar-prep-2', {
+    prompt: bilingual(`选择最合适的形式补全句子。\n${weekday}`, `Choose the form that best completes the sentence.\n${weekday}`),
+    explanation: bilingual('具体星期几的下午用 on。Thursday afternoons 表示每周四下午。',
+      'Use on with a named day or part of a named day. Thursday afternoons describes the weekly schedule.')
+  });
+
+  const provenance = ids.get('fill-english-formal-word-form-6');
+  const provenancePrompt = 'Her record makes it easy to trace the ___ of each donated object. (a ten-letter noun beginning with p for its origin or ownership history)';
+  revise(provenance.id, {
+    prompt: bilingual(`根据括号中的释义填入一个名词。\n${provenancePrompt}`, `Fill the blank with one noun that matches the definition.\n${provenancePrompt}`),
+    explanation: bilingual('provenance 指物品的来源或流转记录，例如一件藏品历任持有者的记录。',
+      'Provenance is the documented origin or ownership history of an object.')
+  });
+
+  for (const [id, zh, en] of [
+    ['library-card-2', '原文说 My library card is in the front pocket of my bag，明确指出卡在包的前口袋。',
+      'The note says, “My library card is in the front pocket of my bag.”'],
+    ['meeting-rain-1', '第一句说天气干燥时在电影院外碰面，时间是两点。',
+      'The first sentence says they will meet outside the cinema at two if the weather stays dry.'],
+    ['school-start-2', '校长认为数据让人看到好转，但没有说这证明了调整上课时间是原因。',
+      'The principal calls the figures encouraging but does not claim they prove what caused the improvement.']
+  ]) {
+    revise(`b400-english-r-${id}`, { explanation: bilingual(zh, en) });
+  }
+
+  revise('b400-biology-trait-frequency-both-alleles-L2-change-input', {
+    prompt: bilingual('模型甲：两个独立来源分别给出 a 的概率为 25% 和 60%。模型乙：两个独立来源分别给出 a 的概率为 50% 和 30%。从甲到乙，获得 aa 基因型的概率怎样变化？',
+      'Model A: probability of receiving allele a from the first source 25%, probability from the second source 60%. Model B: probability from the first source 50%, probability from the second source 30%. The sources are independent in both models. How does the probability of genotype aa change from A to B?'),
+    explanation: bilingual('两个来源独立，得到 aa 要把两项概率相乘。甲为 0.25 × 0.60 = 0.15，乙为 0.50 × 0.30 = 0.15，所以保持不变。',
+      'For independent sources, multiply the probabilities of receiving a. Model A gives 0.25 × 0.60 = 0.15, and model B gives 0.50 × 0.30 = 0.15. The probability stays the same.')
+  });
+
+  globalThis.EachVeyaQuestionVersions = { version: 4 };
 })();
