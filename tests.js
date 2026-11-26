@@ -1720,6 +1720,10 @@
     assert(!document.querySelector('[data-action="hint"]'));
     await finishQuestions(() => true);
     assert(element('.focus-result').textContent.includes('这道跨日新题已独立答对'));
+    assert(element('.focus-result').textContent.includes('可做 7 天复测'));
+    await go('plan/checks', '[data-lesson-focus="balance"]');
+    assert(element('[data-lesson-focus="balance"]').textContent.includes('可做 7 天复测'));
+    assert(!document.querySelector('[data-lesson-focus="balance"] [data-action="lesson-check"]'));
     await go('report', '.report-checks');
     assert(element('.report-checks').textContent.includes('独立答对 1/1 次'));
     assert(element('.report-checks').textContent.includes('最近一题已独立答对'));
@@ -1992,7 +1996,9 @@
     const premature = finish(state, check.id, expected, knownTime, 'balance');
     assert(Coach.lessonChecks(premature, questions, new Date(laterTime)).some(task => task.focus === 'balance' && task.id !== check.id));
     const passed = finish(state, check.id, expected, laterTime, 'balance');
-    equal(Coach.lessonChecks(passed, questions, new Date(laterTime)).map(task => task.focus), ['coefficient']);
+    equal(Coach.lessonChecks(passed, questions, new Date(laterTime)).map(task => [task.focus, task.ready]), [
+      ['coefficient', true], ['balance', false]
+    ]);
     equal(Coach.assessment(passed, questions, new Date(laterTime)).balance.status, 'possible');
     equal(Learning.mathProfile(passed).algebra.level, 'L2');
     equal(Coach.report(passed, questions, 7, new Date(laterTime)).checks[0].independent, 1);
@@ -2002,6 +2008,78 @@
     assert(!waiting.ready && waiting.id !== check.id);
     const empty = Coach.lessonChecks(retry, questions.filter(q => q.purpose !== 'followup'), new Date(2026, 3, 4, 9));
     assert(empty.every(task => !task.ready && !task.id));
+  });
+
+  await test('两步方程隔日独立答对后，七天后安排一道新题，并根据实际结果结束或重排', async () => {
+    const focus = 'balance';
+    const source = byId.get('lesson-equation-tickets-0');
+    const finish = (state, question, at, mode, miss = false) => {
+      const options = { subject: 'math', ids: [question.id], count: 1, ...(mode ? { mode, focus } : {}) };
+      const open = start(options, state);
+      const response = question.fields.map((field, i) => String(field.expected + Number(miss && i === 0)));
+      return Core.advanceSession(Core.gradeAnswer(open, questions, response, at), questions, at);
+    };
+    const missed = finish(Core.createState(), source, knownTime, undefined, true);
+    const [daily] = Coach.lessonChecks(missed, questions, new Date(laterTime));
+    const first = byId.get(daily.id);
+    const passed = finish(missed, first, laterTime, 'spaced');
+    const state = Backup.parse(Backup.serialize(passed), questions);
+    const [weekly] = Coach.lessonChecks(state, questions, new Date(laterTime));
+    assert(weekly.weekly && !weekly.ready);
+    equal(weekly.due, '2026-04-10');
+    const upcoming = Coach.learningPlan(state, questions, new Date(laterTime)).weeks.flatMap(week => week.scheduled);
+    equal(upcoming.filter(task => task.focus === focus && task.date === weekly.due).length, 1);
+    const before = new Date(2026, 3, 9, 23, 59);
+    assert(!Coach.lessonChecks(state, questions, before)[0].ready);
+    const due = new Date(2026, 3, 10, 10);
+    const plan = Coach.learningPlan(state, questions, due);
+    const [item] = plan.todayChecks.filter(task => task.focus === focus);
+    assert(item.ready && item.weekly && !plan.review.some(task => task.focus === focus));
+    const fresh = byId.get(item.id);
+    equal(fresh.level, source.level);
+    assert(![source, first].some(q => Core.equationKey(q) === Core.equationKey(fresh)));
+    const early = finish(state, fresh, before.toISOString(), 'spaced');
+    equal(Coach.report(early, questions, 30, due).checks[0].total, 1);
+    const done = finish(state, fresh, due.toISOString(), 'spaced');
+    equal(Coach.lessonChecks(done, questions, due), []);
+    const [report] = Coach.report(done, questions, 30, due).checks;
+    assert(report.independent === 2 && report.lastWeekly);
+    const failed = finish(state, fresh, due.toISOString(), 'spaced', true);
+    const [retry] = Coach.lessonChecks(failed, questions, due);
+    assert(!retry.weekly && !retry.ready && retry.id !== fresh.id);
+    equal(retry.due, '2026-04-11');
+    const newMistake = new Date(2026, 3, 5, 9);
+    const [pulledForward] = Coach.lessonChecks(finish(state, source, newMistake.toISOString(), undefined, true), questions, newMistake);
+    assert(!pulledForward.weekly && !pulledForward.ready);
+    equal(pulledForward.due, '2026-04-06');
+    const overdueError = finish(state, source, due.toISOString(), undefined, true);
+    const [overdue] = Coach.lessonChecks(overdueError, questions, due);
+    assert(overdue.ready && overdue.due === weekly.due);
+    const noNewItems = [...questions.filter(q => q.purpose !== 'followup'), first];
+    const [unavailable] = Coach.lessonChecks(state, noNewItems, due);
+    assert(unavailable.weekly && !unavailable.ready && !unavailable.id);
+
+    await resetUi();
+    const lastWeek = new Date();
+    const originalDate = new Date(lastWeek.getFullYear(), lastWeek.getMonth(), lastWeek.getDate() - 8, 12);
+    lastWeek.setDate(lastWeek.getDate() - 7);
+    lastWeek.setHours(12, 0, 0, 0);
+    const oldMiss = finish(Core.createState(), source, originalDate.toISOString(), undefined, true);
+    const sinceLastWeek = finish(oldMiss, first, lastWeek.toISOString(), 'spaced');
+    Core.saveState(localStorage, key, sinceLastWeek);
+    replayStorage(key);
+    await go('plan', '.today-plan [data-action="lesson-check"]');
+    const action = element('.today-plan [data-action="lesson-check"]');
+    assert(action.textContent.includes('7 天复测'));
+    click('.today-plan [data-action="lesson-check"]');
+    await waitElement('#numeric-answer-form');
+    equal(current().id, fresh.id);
+    assert(!document.querySelector('[data-action="hint"]'));
+    await finishQuestions(() => true);
+    assert(element('.focus-result').textContent.includes('这道 7 天复测题已独立答对'));
+    await go('report', '.report-checks');
+    assert(element('.report-checks').textContent.includes('最近一次为 7 天复测'));
+    await resetUi();
   });
 
   await test('两步方程复测优先换写法，做过的题不再用，缺题时用同写法的同级新题', () => {

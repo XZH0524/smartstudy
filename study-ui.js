@@ -32,6 +32,10 @@
     lessonStartSkill: ['做一道新题 · {skill}', 'Try one new question · {skill}'],
     lessonStartsOn: ['{date} 可做一道新题', 'One new question available on {date}'],
     lessonReady: ['新题已可以做', 'Your new question is ready'],
+    lessonWeeklyStartsOn: ['{date} 可做 7 天复测', '7-day check available on {date}'],
+    lessonWeeklyReady: ['7 天复测已到期', 'Your 7-day check is due'],
+    lessonWeeklyStart: ['7 天复测 · {skill}', '7-day check · {skill}'],
+    lessonWeeklyPassed: ['这道 7 天复测题已独立答对。', 'You answered the 7-day check correctly without hints.'],
     lessonUnavailable: ['这个专项暂时没有未做过的新题。', 'There are no unseen check questions left for this workshop.'],
     lessonPassed: ['本次新题答对了。', 'You answered this new question correctly.'],
     lessonIndependent: ['这道跨日新题已独立答对。', 'You answered this fresh next-day question correctly without hints.'],
@@ -115,6 +119,7 @@
     reportCheckStat: ['独立答对 {independent}/{total} 次 · 最近 {date}', '{independent}/{total} checks correct without hints · Latest {date}'],
     reportLastIndependent: ['最近一题已独立答对。', 'Most recent question: correct without hints.'],
     reportLastFirstStepCorrect: ['最近一题的第一步已独立做对，第二步还需练习。', 'Most recent question: first step correct without hints. Keep practising the second step.'],
+    reportLastWeekly: ['最近一次为 7 天复测。', 'The latest result is from a 7-day check.'],
     reportLastNeedsPractice: ['最近一题未独立答对。', 'Most recent question: no independent correct answer.'],
     reportMistakeCount: ['{attempts} 次线索，来自 {distinct} 道不同题', '{attempts} clues across {distinct} distinct questions'],
     reportMistakeKind: ['{kind} · {n} 次', '{kind} · {n} times'],
@@ -224,9 +229,10 @@
         const answer = state.attempts.find(attempt => attempt.sessionId === session.id && attempt.questionId === checkQuestion.id);
         const result = Coach.lessonCheckResult(state, catalog, session);
         return `<section class="panel study-panel focus-result"><h2>${t('lessonCheck')}</h2>
-          <p>${t(!result ? 'lessonNotCounted' : result.independent ? result.equation ? 'lessonIndependent' : 'lessonPassed'
+          <p>${t(!result ? 'lessonNotCounted' : result.independent ? result.weekly ? 'lessonWeeklyPassed' : result.equation ? 'lessonIndependent' : 'lessonPassed'
             : result.firstStepCorrect ? 'lessonFirstStepCorrect'
               : task?.id ? session.correct ? 'lessonHinted' : 'lessonRetry' : 'lessonUnavailable')}</p>
+          ${result?.independent && task?.weekly && task.id ? `<p class="field-help">${lessonStatus(task)}</p>` : ''}
           ${answer && !answer.correct ? renderClue(checkQuestion, answer, tasks) : ''}
           <a href="#plan/checks">${t('lessonOpen')}</a></section>`;
       }
@@ -237,7 +243,11 @@
         ${linkToCoach(session.focus, t('coachJump'))}</section>`;
     }
     const formatDate = date => new Date(date + 'T00:00:00').toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
-    const lessonStatus = task => !task.id ? t('lessonUnavailable') : task.ready ? t('lessonReady') : t('lessonStartsOn', { date: formatDate(task.due) });
+    function lessonStatus(task) {
+      if (!task.id) return t('lessonUnavailable');
+      if (task.ready) return t(task.weekly ? 'lessonWeeklyReady' : 'lessonReady');
+      return t(task.weekly ? 'lessonWeeklyStartsOn' : 'lessonStartsOn', { date: formatDate(task.due) });
+    }
 
     function renderLessonChecks(tasks) {
       if (!tasks.length) return '';
@@ -260,7 +270,8 @@
         label: t('planReview', { topic: skills[focus].label[language()], n: count }),
         action: 'focus-practice', attrs: `data-focus="${focus}" data-mode="${mode}"`
       }));
-      tasks.unshift(...plan.todayChecks.map(({ focus }) => ({ label: t('lessonStartSkill', { skill: skills[focus].label[language()] }),
+      tasks.unshift(...plan.todayChecks.map(({ focus, weekly }) => ({
+        label: t(weekly ? 'lessonWeeklyStart' : 'lessonStartSkill', { skill: skills[focus].label[language()] }),
         action: 'lesson-check', attrs: `data-focus="${focus}"` })));
       if (plan.bankReview) tasks.push({ label: t('planBankReview', {
         subject: subjects.find(item => item.id === plan.bankReview.subject).label[language()], n: plan.bankReview.count
@@ -409,7 +420,8 @@
             <a href="${coachUrl(row.focus)}">${text(skills[row.focus].label)}</a>
             <span class="field-help">${t('reportCheckStat', { ...row, date: formatDate(row.last) })}</span>
             ${typeof row.lastIndependent === 'boolean' ? `<span class="field-help">${t(row.lastIndependent ? 'reportLastIndependent'
-              : row.lastFirstStepCorrect ? 'reportLastFirstStepCorrect' : 'reportLastNeedsPractice')}</span>` : ''}</li>`).join('')}</ul></section>` : ''}
+              : row.lastFirstStepCorrect ? 'reportLastFirstStepCorrect' : 'reportLastNeedsPractice')}</span>` : ''}
+            ${row.lastWeekly ? `<span class="field-help">${t('reportLastWeekly')}</span>` : ''}</li>`).join('')}</ul></section>` : ''}
         <section class="panel study-panel report-map"><h2>${t('reportMap')}</h2><p class="field-help">${t('reportSkillNote')}</p>
           <div class="study-grid">${Object.entries(topicsBySubject).map(([subject, ids]) => `<section><h3>${subjectName(subject)}</h3><ul class="study-skill-list">${ids.map(id => {
             const row = report.topics[id];

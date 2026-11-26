@@ -7,6 +7,7 @@
   const { questions, topicsBySubject, levels } = globalThis.SmartStudyData;
   const questionsById = new Map(questions.map(question => [question.id, question]));
   const intervals = [1, 3, 7, 14, 30];
+  const weeklyInterval = 7;
   const defaultPlan = Object.freeze({ enabled: true, goal: 'all', topic: '', minutes: 8, deadline: '' });
   const reportWindows = [1, 7, 30, 90];
   const roadmapParents = {
@@ -232,8 +233,13 @@
       const time = check ? Math.max(submitted, Date.parse(completed.get(attempt.sessionId))) : submitted;
       return { attempt, question, check, submitted, time };
     }).filter(item => item.time <= now.getTime()).sort((a, b) => a.time - b.time);
-    function schedule(focus, question, date) {
-      if (!pending.has(focus)) pending.set(focus, { focus, source: question, due: dayAt(date, 1) });
+    function schedule(focus, question, date, delay = 1) {
+      const current = pending.get(focus);
+      const weekly = delay === weeklyInterval;
+      const due = dayAt(date, delay);
+      if (!current || (current.weekly && !weekly && due < current.due)) {
+        pending.set(focus, { focus, source: question, due, weekly });
+      }
     }
     for (const { attempt, question, check, submitted, time } of attempts) {
       const date = new Date(time);
@@ -254,8 +260,9 @@
         const step = mistakeFocus(question, attempt);
         const firstStepCorrect = Boolean(equation) && attempt.focus === 'balance' && step === 'coefficient' && attempt.hinted === false;
         results.push({ focus: attempt.focus, date: dayAt(date), independent, sessionId: attempt.sessionId,
-          equation: Boolean(equation), firstStepCorrect });
+          equation: Boolean(equation), firstStepCorrect, weekly: task.weekly });
         pending.delete(attempt.focus);
+        if (equation && independent && !task.weekly) schedule(attempt.focus, question, date, weeklyInterval);
         if (!independent && !firstStepCorrect) schedule(attempt.focus, question, date);
         if (step && step !== attempt.focus) schedule(step, question, date);
       }
@@ -279,7 +286,7 @@
     const active = state.active;
     const activeQuestion = active?.mode === 'spaced' ? byId.get(active.questionIds[0]) : null;
     if (activeQuestion?.purpose === 'followup') used.add(activeQuestion.id);
-    return [...pending.values()].sort((a, b) => a.due.localeCompare(b.due)).map(({ focus, due, source }) => {
+    return [...pending.values()].sort((a, b) => a.due.localeCompare(b.due)).map(({ focus, due, source, weekly }) => {
       const resume = due <= today && active?.focus === focus && isFollowupFor(activeQuestion, source, focus);
       const candidates = catalog.filter(q => isFollowupFor(q, source, focus) && !used.has(q.id)
         && !read.has(Core.readingPassage(q)) && !equations.has(Core.equationKey(q)));
@@ -291,7 +298,7 @@
       const preferred = varied.find(q => matches.includes(q)) || varied[0] || matches[0] || candidates[0];
       const id = resume ? activeQuestion.id : preferred?.id;
       if (id && due <= today) used.add(id);
-      return { focus, due, id, ready: Boolean(id && due <= today), resume };
+      return { focus, due, id, ready: Boolean(id && due <= today), resume, weekly };
     });
   }
 
@@ -417,11 +424,11 @@
       daily.push({ date, end: dayAt(now, end), ...counts(period) });
     }
     const checks = new Map();
-    for (const { focus, date, independent, equation, firstStepCorrect } of lessonHistory(state, byId, now).results) {
+    for (const { focus, date, independent, equation, firstStepCorrect, weekly } of lessonHistory(state, byId, now).results) {
       if (date < start) continue;
       const row = checks.get(focus) || { focus, total: 0, independent: 0 };
       checks.set(focus, { ...row, last: date, total: row.total + 1, independent: row.independent + Number(independent),
-        ...(equation ? { lastIndependent: independent, lastFirstStepCorrect: firstStepCorrect } : {}) });
+        ...(equation ? { lastIndependent: independent, lastFirstStepCorrect: firstStepCorrect, lastWeekly: weekly } : {}) });
     }
     return {
       recent: counts(recent), previous: counts(previous), topics, daily, checks: [...checks.values()].sort((a, b) => b.last.localeCompare(a.last)),
