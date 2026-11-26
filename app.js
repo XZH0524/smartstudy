@@ -6,6 +6,7 @@
   const Science = globalThis.EachVeyaScience;
   const Coach = globalThis.EachVeyaCoach;
   const Lessons = globalThis.EachVeyaLessons;
+  const schoolPractice = globalThis.EachVeyaSchoolPractice;
   const QuestionVersions = globalThis.EachVeyaQuestionVersions;
   const focusSkills = globalThis.EachVeyaSkills?.skills;
   const StudyUI = globalThis.EachVeyaStudyUI;
@@ -28,7 +29,7 @@
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && Lessons.starterPairs?.[id]?.length === 2 && workshopSubjects.has(id)));
   if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 3
-    || Core?.VERSION !== 9 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
+    || Core?.VERSION !== 9 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup, schoolPractice].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -110,6 +111,13 @@
     findStart: ['帮我找起点 · {n} 题', 'Find my starting level · {n} questions'],
     compareLevels: ['看典型题，比较 {first} 和 {second}', 'Compare {first} and {second} examples'],
     tryExamples: ['试做这两道题', 'Try both examples'],
+    schoolSets: ['初高中典型题', 'School practice sets'],
+    schoolJunior: ['初中风格', 'Junior secondary'],
+    schoolSenior: ['高中风格', 'Senior secondary'],
+    schoolRead: ['阅读理解', 'Reading comprehension'],
+    schoolGrammar: ['语篇填空', 'Passage gap-fill'],
+    schoolCalculate: ['材料与计算', 'Data and calculations'],
+    schoolMaterial: ['查看材料', 'View the shared material'],
     starterResult: ['典型题热身', 'Level examples'],
     recommendedSet: ['按推荐练 5 题', 'Practise 5 at my suggested levels'],
     defaultTrial: ['自动 · 先试 {level}', 'Automatic · start at {level}'],
@@ -649,6 +657,22 @@
     </details>`;
   }
 
+  function renderSchoolSets(subject) {
+    const sets = schoolPractice.filter(set => set.subject === subject);
+    return `<section class="school-sets" aria-labelledby="school-sets-heading">
+      <h3 id="school-sets-heading">${t('schoolSets')}</h3>
+      <div class="school-set-grid">${['junior', 'senior'].map(stage => `<div>
+        <h4>${t(stage === 'junior' ? 'schoolJunior' : 'schoolSenior')}</h4>
+        <div class="inline-actions">${sets.filter(set => set.stage === stage).map(set => {
+          const first = byId.get(set.ids[0]);
+          const kind = subject !== 'english' ? 'schoolCalculate' : first.topic === 'reading' ? 'schoolRead' : 'schoolGrammar';
+          return button(`${text(set.title)}<small>${t(kind)} · ${t('questionCount', { n: set.ids.length })} · ${escapeHtml(set.level)}</small>`,
+            'school-set', 'secondary school-set-button', `data-set="${escapeHtml(set.id)}"`);
+        }).join('')}</div>
+      </div>`).join('')}</div>
+    </section>`;
+  }
+
   function renderIELTS() {
     const bands = Array.from({ length: 17 }, (_, index) => ((index + 2) / 2).toFixed(1));
     return `<section class="placement-panel ielts-panel" aria-labelledby="ielts-heading">
@@ -776,6 +800,7 @@
         ${english ? `<div class="filters study-tracks">${[['cefr', 'cefrTrack'], ['ielts', 'ieltsTrack']].map(([id, label]) =>
           `<button type="button" class="filter-button ${id === track ? 'active' : ''}" data-action="track" data-track="${id}" aria-pressed="${id === track}">${t(label)}</button>`).join('')}</div>` : ''}
         ${showIELTS ? renderIELTS() : renderPlacementPanel(subject, placement, firstVisit)}
+        ${!showIELTS && !curriculum ? renderSchoolSets(subject) : ''}
         ${!showIELTS && !curriculum && !topic ? renderStarterPair(subject, !placement) : ''}
         ${!showIELTS && !curriculum ? `<div class="inline-actions">
           ${button(t(Lessons.workshops[subject]), 'lesson', 'secondary', `data-subject="${subject}"`)}
@@ -872,11 +897,20 @@
   }
 
   function modeLabel(mode, question) {
+    if (mode === 'practice' && question?.schoolSet) return t('schoolSets');
     if (mode === 'practice' && question?.purpose === 'starter') return t('starterResult');
     if (mode === 'spaced' && question?.purpose === 'followup') return t('lessonCheck');
     if (accountEnabled && mode === 'science-ai') return t('sciencePreviewMode');
     return t(({ practice: 'practiceMode', diagnostic: 'diagnosticMode', review: 'reviewMode', ai: 'aiTitle', 'algebra-sample': 'aiSampleMode',
       'science-ai': accountEnabled ? 'scienceAiPreview' : 'scienceAiMode' })[mode] || mode);
+  }
+
+  function renderMaterial(material, open = false) {
+    if (!material) return '';
+    return `<details class="school-material" ${open ? 'open' : ''}>
+      <summary>${open ? text(material.title) : t('schoolMaterial')}</summary>
+      <div lang="${material.body.zh === material.body.en ? 'en' : state.language}">${text(material.body)}</div>
+    </details>`;
   }
 
   function answerLabel(question, response) {
@@ -892,7 +926,7 @@
   }
 
   function renderAnswerDetails(question, attempt) {
-    return `<p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
+    return `${renderMaterial(question.material)}<p>${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}<br>
       ${t('rightAnswer', { answer: expectedLabel(question) })}<br>
       ${text(question.explanation)}${attempt.hinted ? `<br><strong>${t('hintUsed')}</strong>` : ''}</p>${study.renderEvidence(question)}`;
   }
@@ -966,6 +1000,7 @@
           ${question.ai ? `<span class="tag">${t(accountEnabled ? 'aiPreviewBank' : 'aiGenerated')}</span>` : ''}
           ${question.ai || question.sample || question.format === 'fill' ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
+        ${renderMaterial(question.material, true)}
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
         ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : ''}
         ${question.fields ? renderNumericFields(question, choice || [], graded, showGrade ? score : null, guidedMiss)
@@ -997,7 +1032,7 @@
       <div class="review-actions">${reviewButtons}<a class="button secondary" href="#coach">${t('coach')}</a></div>
       ${filtered.length ? `<div class="mistake-list">${filtered.map(({ question, attempt, wrongCount }) => `<article class="mistake-card">
         <div class="mistake-meta"><span>${subjectName(question.subject)} · ${text(topics[question.topic])}</span><span>${t('wrongCount', { n: wrongCount })}</span></div>
-        <h3>${text(question.prompt)}</h3><p class="mistake-answer">${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}</p>
+        <h3>${text(question.prompt)}</h3>${renderMaterial(question.material)}<p class="mistake-answer">${t('yourAnswer', { answer: answerLabel(question, Core.responseOf(attempt)) })}</p>
         ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : study.renderClue(question, attempt, nextDay)}
         <details><summary>${t('explanation')}</summary><p><strong>${t('rightAnswer', { answer: expectedLabel(question) })}</strong><br>${text(question.explanation)}</p></details>
         <div class="question-bottom"><span class="section-note">${escapeHtml(new Date(attempt.at).toLocaleDateString(locale()))}</span>${question.retired ? '' : button(t('reviewOne'), 'review-one', 'secondary', `data-id="${question.id}"`)}</div>
@@ -1470,13 +1505,17 @@
       }
       if (action === 'resume') { cancelAiRequest(); forceSetup = false; go('practice'); }
       if (action === 'setup') { forceSetup = true; go('practice'); }
+      if (action === 'school-set') {
+        const set = schoolPractice.find(item => item.id === target.dataset.set);
+        if (set) await begin({ subject: set.subject, ids: set.ids, count: set.ids.length });
+      }
       if (action === 'starter-pair') {
         const subject = target.dataset.subject;
         const ids = Lessons.starterPairs[subject].map(question => question.id);
         await begin({ subject, ids, count: ids.length });
       }
       if (action === 'recommended-set') {
-        await begin({ subject: target.dataset.subject, level: 'auto', count: 5 });
+        await begin({ subject: target.dataset.subject, level: 'auto', format: 'all', count: 5 });
       }
       if (action === 'subject' || action === 'topic-practice') openSetup(target.dataset.subject, target.dataset.topic);
       if (action === 'ai-start') await beginAi(target.dataset.level);
@@ -1600,7 +1639,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.26';
+    script.src = 'tests.js?v=2.27';
     document.body.appendChild(script);
   }
 })();

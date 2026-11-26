@@ -1389,6 +1389,69 @@
     change('language', 'en');
   });
 
+  await test('初高中典型题连续使用同一阅读材料，语篇填空和分步计算支持评分与恢复', async () => {
+    const sets = globalThis.EachVeyaSchoolPractice;
+    equal(sets.length, 14);
+    equal(sets.flatMap(set => set.ids).length, 48);
+    const expected = {
+      repair: [1, 2, 0, 3], library: [3, 1, 2, 0], shade: [1, 0, 2, 3], museum: [2, 1, 0, 2],
+      garden: [['opened'], ['brings'], ['to'], ['to share']],
+      journals: [['to record'], ['were taken'], ['regularly'], ['in']],
+      'ticket-sales': [[108], [4, 24], [6]], fountain: [[5], [3, 9], [2]],
+      resistor: [[10], ['3/5'], [3]], cart: [[8], [4, 12], [18]],
+      salt: [[120], [10], [12]], dilution: [[0.05], [0.02, 0.1], [0.0025]],
+      seedlings: [[3], [4], 1], peas: [[25], ['4/6'], ['3/8']]
+    };
+    for (const set of sets) {
+      const items = set.ids.map(id => byId.get(id));
+      equal(new Set(items.map(q => q.material)).size, 1);
+      assert(items.every(q => q.focusOnly && q.level === set.level && q.schoolSet === set.id));
+      for (const [i, value] of expected[set.id].entries()) {
+        const answer = Array.isArray(value) ? value.map(String) : value;
+        assert(Core.evaluateAnswer(items[i], answer).correct, items[i].id);
+      }
+    }
+
+    await resetUi();
+    await openSubject('english');
+    assert(element('.school-sets').textContent.includes('初中风格'));
+    click('[data-set="repair"]');
+    await waitElement('.school-material[open]');
+    const firstMaterial = element('.school-material').textContent;
+    await answerUi(false);
+    click('[data-action="next"]');
+    equal(current().id, 'school-repair-2');
+    replayStorage(key);
+    equal(element('.school-material').textContent, firstMaterial);
+    await finishQuestions(() => true);
+    equal(read().sessions.at(-1).correct, 3);
+    equal(Core.getMistakes(read(), questions)[0].question.id, 'school-repair-1');
+    await go('mistakes', '.mistake-card .school-material');
+    assert(element('.mistake-card .school-material').textContent.includes('Repair Corner'));
+    equal(Backup.parse(Backup.serialize(read()), questions).attempts.length, 4);
+    const report = Coach.report(read(), questions, 7);
+    equal(report.topics.reading.total, 4);
+    equal(report.topics.reading.passages, 1);
+
+    await openSubject('english');
+    click('[data-set="journals"]');
+    await waitElement('#numeric-0');
+    await finishQuestions(() => true);
+    equal(read().sessions.at(-1).correct, 4);
+    await openSubject('math');
+    click('[data-set="ticket-sales"]');
+    await waitElement('#numeric-0');
+    await answerUi(true);
+    click('[data-action="next"]');
+    await waitElement('#numeric-1');
+    assert(element('.school-material').textContent.includes('132 元'));
+    await finishQuestions(() => true);
+    equal(read().sessions.at(-1).correct, 3);
+    fitsViewport();
+    await resetUi();
+    change('language', 'en');
+  });
+
   await test('数学起点测试完成 10 题后显示分领域推荐，设置、作答和结果标题对齐', async () => {
     const left = headingLeft();
     await openSubject('math');

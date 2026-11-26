@@ -804,6 +804,50 @@ footer {
 .question-card {
   padding:32px
 }
+.school-sets {
+  margin:20px 0;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+}
+.school-set-grid {
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap:16px;
+  margin-top:12px;
+}
+.school-set-grid h4 {
+  margin:0 0 7px;
+}
+.school-set-grid .inline-actions {
+  display:grid;
+}
+.school-set-button {
+  display:block;
+  text-align:start;
+}
+.school-set-button small {
+  display:block;
+  margin-top:4px;
+  font-weight:400;
+}
+.school-material {
+  margin:0 0 18px;
+  padding:12px 16px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#f3f6ef;
+  overflow-wrap:anywhere;
+}
+.school-material summary {
+  cursor:pointer;
+  font-weight:650;
+}
+.school-material div {
+  margin-top:9px;
+  line-height:1.65;
+  white-space:pre-wrap;
+}
 .question-tags {
   display:flex;
   gap:9px;
