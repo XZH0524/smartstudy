@@ -107,7 +107,10 @@
       options: choices.map(value => ({ zh: String(value), en: String(value) })),
       answer: slot,
       ...(fill || calculation ? { format: spec.format, fields } : {}),
-      explanation: {
+      explanation: coefficient === 1 ? {
+        zh: `整理等式，直接得到 ${reduced}。`,
+        en: `Rearrange to get ${reduced}.`
+      } : {
         zh: `整理得到 ${reduced}。两边同时除以 ${coefficient}，得 x = ${answer}。`,
         en: `Rearrange to get ${reduced}. Divide both sides by ${coefficient} to get x = ${answer}.`
       }

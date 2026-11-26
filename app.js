@@ -28,7 +28,7 @@
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
   if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 3
-    || Core?.VERSION !== 8 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
+    || Core?.VERSION !== 9 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -53,7 +53,7 @@
   const accountEnabled = Boolean(Account?.enabled && !testing);
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
-  const LEGACY_STORAGE_KEYS = [7, 6, 5, 4, 3, 2, 1].map(version => `${storagePrefix}.v${version}`);
+  const LEGACY_STORAGE_KEYS = [8, 7, 6, 5, 4, 3, 2, 1].map(version => `${storagePrefix}.v${version}`);
   const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     ...StudyUI.copy,
@@ -152,7 +152,7 @@
     replaceTitle: ['开始一组新练习？', 'Start a new practice?'], replaceText: ['当前练习将结束。已经提交的答案仍计入学习记录。', 'The current practice will end. Submitted answers remain in your study history.'],
     continue: ['开始新练习', 'Start new practice'], storageUnavailable: ['浏览器无法保存记录。你仍可练习，但关闭或刷新页面后，本次记录可能丢失。请在普通浏览模式下打开。', 'This browser cannot save your progress. You can practise, but this session may be lost after closing or refreshing. Try a normal browsing window.'],
     storageDamaged: ['学习记录无法读取。浏览器里的原记录已保留，本次作答暂时无法保存。', 'Saved study data could not be read. The existing record is kept, and answers in this session cannot be saved.'],
-    storageIncompleteCatalog: ['当前页面缺少学习记录引用的题目。原记录已保留。请刷新，或打开曾做这些题的新版网页。', 'This page is missing questions referenced by your study history. Your saved records are intact. Reload or open the version where you answered those questions.'],
+    storagePendingCatalog: ['部分学习记录待恢复。你可以继续练习，导出会包含暂存记录。加载对应题库并刷新后可恢复。', 'Some saved records are waiting to be restored. You can keep practising, and exports include the saved records. Reload with the matching bank to restore them.'],
     archivedQuestion: ['已归档的题目 · 按原题评分', 'Archived question · Original scoring'],
     archivedAnswers: ['回看已归档题目的作答', 'Review answers to archived questions'],
     noMatch: ['当前条件没有题目，请调整设置。', 'No questions match. Please adjust the settings.'], changed: ['另一窗口已更新学习记录，页面已同步。', 'Study history changed in another window. This page is now up to date.'],
@@ -169,6 +169,7 @@
     aiSampleFailed: ['试做暂时无法开始，请重新选择难度。', 'The sample could not start. Choose a level again.'],
     numericHelp: ['填写整数、小数或分数，例如 −3、3.0、6/2。', 'Enter a whole number, decimal or fraction, such as −3, 3.0 or 6/2.'],
     textFillHelp: ['按题目要求输入英语单词或短语。', 'Enter an English word or phrase as directed.'],
+    textFillLabel: ['在此填空', 'Fill in the blank'],
     textFillInvalid: ['请在空格中填入英语单词或短语。', 'Fill in the blank with an English word or phrase.'],
     numericInvalid: ['请在每个空格填入有效数字。分数的分母不能为 0。', 'Enter a valid number in each field. A fraction must have a nonzero denominator.'],
     numericMarkCorrect: ['这一步正确', 'Correct'],
@@ -285,7 +286,7 @@
     }
   }
   function storageError(error) {
-    return ({ SecurityError: 'storageUnavailable', IncompleteStudyCatalog: 'storageIncompleteCatalog' })[error.name] || 'storageDamaged';
+    return error.name === 'SecurityError' ? 'storageUnavailable' : 'storageDamaged';
   }
   function setState(next) {
     state = next;
@@ -322,7 +323,8 @@
   function updateStorageNotice() {
     const notice = document.getElementById('storage-notice');
     if (!notice) return;
-    const message = account ? (account.error ? 'accountUnsaved' : '') : storageIssue;
+    const message = (account ? (account.error ? 'accountUnsaved' : '') : storageIssue)
+      || (state.unavailable ? 'storagePendingCatalog' : '');
     notice.hidden = !message;
     notice.innerHTML = message ? t(message) : '';
   }
@@ -463,8 +465,9 @@
             }
           }
           if (!sync.pending) {
-            const activeChanged = JSON.stringify(state.active) !== JSON.stringify(saved.study.active);
-            setState(saved.study);
+            const synced = Core.normalizeState(saved.study, bank);
+            const activeChanged = JSON.stringify(state.active) !== JSON.stringify(synced.active);
+            setState(synced);
             if (activeChanged && route() === 'practice') render();
           }
         } catch (_) {
@@ -487,7 +490,7 @@
     account = { ...profile, revision: saved.revision, pending: null, flushing: null, error: false, stale: false,
       migrating: false, migrationStatus: prior?.migrationStatus };
     auth = { challenge: '', status: '', busy: false };
-    setState(saved.study);
+    setState(Core.normalizeState(saved.study, bank));
     if (!prior) { selected = null; resultId = null; backupStatus = null; }
     if (setup.subject === 'english') setup.level = state.preferences.englishLevel || 'auto';
     render();
@@ -861,7 +864,8 @@
 
   function answerLabel(question, response) {
     if (question.fields) {
-      return question.fields.map((field, index) => field.label[state.language].replace('□', response[index])).join(' · ');
+      return question.fields.map((field, index) => field.type === 'text' ? response[index]
+        : field.label[state.language].replace('□', () => response[index])).join(' · ');
     }
     return `${'ABCD'[response]} · ${question.options[response][state.language]}`;
   }
@@ -881,8 +885,9 @@
     return `<form id="numeric-answer-form" aria-labelledby="question-title" novalidate>
       ${!graded ? `<p class="question-hint" id="numeric-help">${t(textAnswer ? 'textFillHelp' : 'numericHelp')}</p>` : ''}
       <div class="numeric-fields">${question.fields.map((field, index) => `<div class="field">
-        <label for="numeric-${index}">${text(field.label)}</label>
+        <label for="numeric-${index}">${field.type === 'text' ? t('textFillLabel') : text(field.label)}</label>
         <input id="numeric-${index}" name="answer-${index}" class="numeric-input" data-numeric-input type="text"
+          ${field.type === 'text' ? '' : 'inputmode="decimal"'}
           autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="${Core.fieldInputLimit(field)}"
           value="${escapeHtml(response[index] ?? '')}" ${graded ? 'readonly' : 'aria-describedby="numeric-help"'}>
         ${score ? `<span class="numeric-mark ${score.marks[index] ? 'score-ok' : 'score-error'}">${score.marks[index]
@@ -1397,11 +1402,11 @@
           if (current.active?.id !== active?.id || current.active?.index !== active?.index) return current;
           const updated = Core.advanceSession(current, questions);
           advanced = true;
-          return updated;
+          return !updated.active && updated.unavailable?.active.length ? Core.normalizeState(updated, bank) : updated;
         });
         if (!advanced) { render(); announce(t('changed')); return; }
         selected = null;
-        if (state.active) { render(); document.getElementById('question-title').setAttribute('tabindex', '-1'); document.getElementById('question-title').focus(); }
+        if (state.active?.id === active.id) { render(); document.getElementById('question-title').setAttribute('tabindex', '-1'); document.getElementById('question-title').focus(); }
         else { resultId = state.sessions.at(-1).id; go('result'); main.focus(); }
       }
       if (action === 'home') go('home');
@@ -1567,7 +1572,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.24';
+    script.src = 'tests.js?v=2.25';
     document.body.appendChild(script);
   }
 })();

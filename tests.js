@@ -707,8 +707,9 @@
     equal(Coach.learningPlan({ ...resumed, active: null }, questions, new Date(laterTime)).bankReview, null);
     const values = new Map([[key, JSON.stringify(state)]]);
     const storage = { getItem: name => values.get(name) ?? null };
-    throws(() => Core.readState(storage, key, [], activeCatalog));
-    throws(() => Backup.parse(Backup.serialize(legacy), activeCatalog));
+    const pending = Core.readState(storage, key, [], activeCatalog);
+    equal(pending.unavailable.attempts.map(attempt => attempt.questionId), [previous.id]);
+    equal(Backup.parse(Backup.serialize(pending), questions), Core.normalizeState(state, questions));
     equal(JSON.parse(values.get(key)), state);
   });
 
@@ -748,24 +749,49 @@
     throws(() => Core.normalizeState({ version: 99, attempts: [], sessions: [] }, questions));
   });
 
-  await test('载入缺少对应题库时，已完成练习的索引与仅保存的题目报错不会被抹去', () => {
+  await test('旧学习记录中的未知题逐条暂存，已知作答可继续保存和合并，匹配题库后恢复', () => {
     const question = byId.get('fill-english-present-simple-1');
     const partial = questions.filter(item => item.id !== question.id);
-    const reported = Core.flagQuestion(Core.createState(), question, 'answer', knownTime);
-    const completedOnly = { ...Core.createState(), sessions: [{ id: 'links-to-a-completed-set',
-      subject: 'english', questionIds: [question.id], completedAt: knownTime }] };
-    for (const state of [reported, completedOnly]) {
-      const saved = JSON.stringify(state);
-      const storage = { getItem: () => saved };
-      try {
-        Core.readState(storage, key, [], partial);
-        assert(false, 'Loading omitted a missing question');
-      } catch (error) {
-        equal(error.name, 'IncompleteStudyCatalog');
-      }
-      equal(storage.getItem(key), saved);
-    }
-    equal(Core.readState({ getItem: () => JSON.stringify(reported) }, key, [], questions), reported);
+    const known = byId.get('en-g01');
+    const options = { subject: 'english', ids: [known.id, question.id], count: 2 };
+    let state = start(options);
+    state = Core.advanceSession(Core.gradeAnswer(state, questions, known.answer, knownTime), questions, knownTime);
+    state = Core.advanceSession(Core.gradeAnswer(state, questions, [question.fields[0].expected], knownTime), questions, knownTime);
+    state = Core.flagQuestion(start(options, state), question, 'answer', knownTime);
+    state = Core.advanceSession(Core.gradeAnswer(state, questions, known.answer, laterTime), questions, laterTime);
+    const v8 = 'smart-study.tests.v8';
+    const saved = JSON.stringify({ ...state, version: 8 });
+    const values = new Map([[v8, saved]]);
+    const storage = { getItem: name => values.get(name) ?? null, setItem: (name, value) => values.set(name, value) };
+    const pending = Core.readState(storage, key, [v8], partial);
+    equal(pending.attempts.map(attempt => attempt.questionId), [known.id, known.id]);
+    equal(Core.reportableAttempts(pending).length, 2);
+    equal(pending.active, null);
+    equal(pending.sessions, []);
+    equal(pending.unavailable.attempts.map(attempt => Core.responseOf(attempt)), [[question.fields[0].expected]]);
+    equal(pending.unavailable.active[0].id, state.active.id);
+    equal(pending.unavailable.flags, state.flags);
+    const local = answerPractice(pending, ['ma-a01'], [true]);
+    Core.saveState(storage, key, local);
+    equal(values.get(v8), saved);
+    const reloaded = Core.readState(storage, key, [v8], partial);
+    equal(reloaded.attempts.length, 3);
+    const rawImport = Backup.parse(saved, partial);
+    const combined = Backup.merge(reloaded, rawImport, partial);
+    const reimport = Backup.parse(Backup.serialize(combined), partial);
+    equal(reimport, reloaded);
+    const recovered = Backup.parse(Backup.serialize(combined), questions);
+    equal(recovered.unavailable, undefined);
+    equal(recovered.attempts.length, 4);
+    assert(recovered.sessions.some(session => session.id === state.sessions[0].id && session.correct === 2));
+    equal(recovered.active, state.active);
+    equal(recovered.flags, state.flags);
+    const inProgress = start({ ids: ['ma-a01'], count: 1 }, reloaded);
+    const twoSets = Core.normalizeState(inProgress, questions);
+    equal(twoSets.active.id, inProgress.active.id);
+    equal(twoSets.unavailable.active[0], state.active);
+    const finished = Core.advanceSession(answerCurrent(twoSets), questions, laterTime);
+    equal(Core.normalizeState(finished, questions).active, state.active);
   });
 
   await test('两道快速错答让系统多收集证据，慢答和已存历史不会因速度降级', () => {
@@ -1174,6 +1200,54 @@
     await waitElement('.feedback');
   }
 
+  await test('页面隔离未知题后仍能续做已知练习，并在提交后保留旧记录', async () => {
+    await resetUi();
+    const saved = answerPractice(Core.createState(), ['en-g01'], [false]);
+    const future = { ...saved.attempts[0], questionId: 'future-question-id', sessionId: 'future-session' };
+    const active = start({ ids: ['ma-a01'], count: 1 }, { ...saved, attempts: [...saved.attempts, future] });
+    Core.saveState(localStorage, key, { ...active, version: 8 });
+    replayStorage(key);
+    const notice = element('#storage-notice');
+    assert(!notice.hidden && notice.textContent.includes('部分学习记录待恢复'));
+    equal(Core.getMistakes(read(), questions).map(entry => entry.question.id), ['en-g01']);
+    await go('practice', '#question-title');
+    await finishQuestions(() => true);
+    const reloaded = read();
+    equal(reloaded.attempts.length, 2);
+    equal(reloaded.unavailable.attempts[0], future);
+    assert(reloaded.sessions.some(session => session.id === active.active.id));
+    await resetUi();
+  });
+
+  await test('AI 方程系数为 1 时直接读出 x，其他系数继续说明除法', () => {
+    const unit = AI.sampleBatch('L1')[0];
+    const reducedUnit = AI.normalizeSpec({ a: 4, b: 2, c: 3, d: 6, form: 'plain', distractors: [1, 2, 3] }, 'L3');
+    for (const spec of [unit, reducedUnit]) {
+      const item = AI.makeQuestion(spec);
+      assert(!item.explanation.zh.includes('除以') && !item.explanation.en.includes('Divide'));
+      assert(item.explanation.zh.includes('x = ' + AI.solution(spec)));
+    }
+    assert(AI.makeQuestion(aiFixture[0]).explanation.zh.includes('除以 3'));
+  });
+
+  await test('英语原形填空显示自然标签和答案，不出现等号', async () => {
+    await resetUi();
+    const item = questions.find(q => q.id.startsWith('fill-english-present-simple-')
+      && !q.retired && q.fields[0].expected === 'have');
+    const seeded = start({ subject: 'english', ids: [item.id], count: 1 });
+    Core.saveState(localStorage, key, seeded);
+    replayStorage(key);
+    await go('practice', '#numeric-0');
+    equal(element('label[for="numeric-0"]').textContent, '在此填空');
+    equal(element('#numeric-0').getAttribute('inputmode'), null);
+    await answerUi(false);
+    equal(element('.answer-line').textContent, '正确答案为 have');
+    click('[data-action="next"]');
+    await waitElement('.result-row');
+    assert(!element('.result-row').textContent.includes('答案 = have'));
+    await resetUi();
+  });
+
   await test('五科可从普通练习挑选填空；英文自由作答与等值分数可批改、保存及复习', async () => {
     for (const { id } of subjects) {
       const preview = Learning.practicePool(Core.createState(), { subject: id, level: levels[id][0], format: 'fill' });
@@ -1219,6 +1293,7 @@
     change('format', 'fill');
     submitForm();
     await waitElement('#numeric-0');
+    equal(element('#numeric-0').getAttribute('inputmode'), 'decimal');
     const [numerator, denominator] = current().fields[0].expected.split('/').map(Number);
     element('#numeric-0').value = `${numerator * 2}/${denominator * 2}`;
     click('button[form="numeric-answer-form"]');
@@ -1740,6 +1815,7 @@
       click(`#practice-form [data-action="lesson"][data-subject="${subject}"]`);
       await waitElement('#numeric-answer-form');
       const q = current();
+      assert([...document.querySelectorAll('[data-numeric-input]')].every(input => input.getAttribute('inputmode') === 'decimal'));
       const response = q.fields.map((field, index) => String(field.expected + Number(index === wrongStep)));
       response.forEach((value, index) => { element(`#numeric-${index}`).value = value; });
       click('button[form="numeric-answer-form"]');
@@ -1806,6 +1882,7 @@
     click('[data-action="lesson"][data-subject="physics"]');
     await waitElement('#numeric-answer-form');
     const first = current();
+    assert([...document.querySelectorAll('[data-numeric-input]')].every(input => input.getAttribute('inputmode') === 'decimal'));
     const [firstTime, firstRate] = first.fields.map(field => field.expected);
     const stopped = Number(first.prompt.en.match(/stops for (\d+) s/)[1]);
     element('#numeric-0').value = String(firstTime - stopped);

@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const VERSION = 8;
+  const VERSION = 9;
   const AI = globalThis.EachVeyaAi;
   const { levels: { english: englishLevels }, topicsBySubject } = globalThis.SmartStudyData;
   const SkillData = globalThis.EachVeyaSkills;
@@ -123,8 +123,22 @@
     return question.errors?.[attempt.choice] || '';
   }
 
+  const storedRows = (state, field) => [
+    ...(Array.isArray(state[field]) ? state[field] : []),
+    ...(Array.isArray(state.unavailable?.[field]) ? state.unavailable[field] : [])
+  ];
+
+  function ungradedAnswer(entry) {
+    const response = responseOf(entry);
+    const correct = typeof entry.correct === 'boolean' ? { correct: entry.correct } : {};
+    if (Array.isArray(response) && response.length && response.every(value => typeof value === 'string')) {
+      return { response: [...response], ...correct };
+    }
+    return Number.isInteger(response) && response >= 0 ? { choice: response, ...correct } : null;
+  }
+
   function normalizeState(raw, questions) {
-    if (!raw || ![1, 2, 3, 4, 5, 6, 7, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
     const generated = [];
@@ -140,52 +154,63 @@
       generated.push(spec);
     }
     const byId = new Map(questionsForState(questions, { generated }).map(question => [question.id, question]));
+    const unavailable = { attempts: [], sessions: [], active: [], flags: [] };
     const attemptsBySession = new Map();
     const attempts = [];
-    for (const entry of raw.attempts) {
-      const question = byId.get(entry?.questionId);
-      if (!question || typeof entry.sessionId !== 'string' || !entry.sessionId || !dateIsValid(entry.at)) continue;
-      const score = evaluateAnswer(question, responseOf(entry));
+    for (const entry of storedRows(raw, 'attempts')) {
+      if (typeof entry?.questionId !== 'string' || !entry.questionId || typeof entry.sessionId !== 'string'
+        || !entry.sessionId || !dateIsValid(entry.at)) continue;
+      const question = byId.get(entry.questionId);
+      const score = question ? evaluateAnswer(question, responseOf(entry)) : ungradedAnswer(entry);
       if (!score) continue;
       if (!attemptsBySession.has(entry.sessionId)) attemptsBySession.set(entry.sessionId, new Map());
       const submitted = attemptsBySession.get(entry.sessionId);
-      if (submitted.has(question.id)) continue;
+      if (submitted.has(entry.questionId)) continue;
 
       const attempt = {
-        sessionId: entry.sessionId, questionId: question.id, ...answerRecord(score), at: entry.at,
+        sessionId: entry.sessionId, questionId: entry.questionId, ...(question ? answerRecord(score) : score), at: entry.at,
         mode: raw.version === 1 || entry.mode === 'legacy' ? 'legacy' : sessionMode(entry.mode),
         hinted: raw.version === 1 || typeof entry.hinted !== 'boolean' ? null : entry.hinted
       };
-      const focus = focusFor(entry.focus, attempt.mode, question.subject);
-      if (focus && question.focus?.includes(focus)) attempt.focus = focus;
+      const focus = focusFor(entry.focus, attempt.mode, question?.subject ?? SkillData.skills[entry.focus]?.subject);
+      if (focus && (!question || question.focus?.includes(focus))) attempt.focus = focus;
       if (raw.version >= 4 && isValidDuration(entry.durationMs)) attempt.durationMs = entry.durationMs;
-      attempts.push(attempt);
-      submitted.set(question.id, attempt);
+      (question ? attempts : unavailable.attempts).push(attempt);
+      submitted.set(entry.questionId, attempt);
     }
     attempts.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
     const sessions = [];
     const completedIds = new Set();
-    for (const session of raw.sessions) {
+    for (const session of storedRows(raw, 'sessions')) {
       if (!session || typeof session.id !== 'string' || !session.id || completedIds.has(session.id) || !dateIsValid(session.completedAt)) continue;
       const questionIds = unique(Array.isArray(session.questionIds) ? session.questionIds : []);
-      if (!questionIds.length || questionIds.some(id => byId.get(id)?.subject !== session.subject || !byId.has(id))) continue;
-      const submitted = attemptsBySession.get(session.id);
-      if (questionIds.some(id => !submitted?.has(id))) continue;
-      const correct = questionIds.filter(id => submitted.get(id).correct).length;
+      if (!Object.hasOwn(topicsBySubject, session.subject) || !questionIds.length
+        || questionIds.some(id => typeof id !== 'string' || !id || (byId.has(id) && byId.get(id).subject !== session.subject))) continue;
       const mode = sessionMode(session.mode);
       const focus = focusFor(session.focus, mode, session.subject);
-      sessions.push({ id: session.id, subject: session.subject, mode, questionIds, completedAt: session.completedAt, correct,
-        ...(focus && questionIds.every(id => byId.get(id).focus?.includes(focus)) ? { focus } : {}) });
+      const restored = { id: session.id, subject: session.subject, mode, questionIds, completedAt: session.completedAt };
+      const focusEntry = focus && questionIds.every(id => !byId.has(id) || byId.get(id).focus?.includes(focus)) ? { focus } : {};
+      if (questionIds.some(id => !byId.has(id))) {
+        unavailable.sessions.push({ ...restored, ...(Number.isInteger(session.correct) ? { correct: session.correct } : {}), ...focusEntry });
+      } else {
+        const submitted = attemptsBySession.get(session.id);
+        if (questionIds.some(id => !submitted?.has(id))) continue;
+        const correct = questionIds.filter(id => submitted.get(id).correct).length;
+        sessions.push({ ...restored, correct, ...focusEntry });
+      }
       completedIds.add(session.id);
     }
     sessions.sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
 
     let active = null;
-    const saved = raw.active;
-    if (saved && typeof saved.id === 'string' && saved.id && !completedIds.has(saved.id)) {
+    const practice = [raw.active, ...(Array.isArray(raw.unavailable?.active) ? raw.unavailable.active : [])];
+    const activeIds = new Set();
+    for (const saved of practice) {
+      if (!saved || typeof saved.id !== 'string' || !saved.id || completedIds.has(saved.id) || activeIds.has(saved.id)
+        || !Object.hasOwn(topicsBySubject, saved.subject)) continue;
       const questionIds = unique(Array.isArray(saved.questionIds) ? saved.questionIds : [])
-        .filter(id => byId.has(id) && byId.get(id).subject === saved.subject);
+        .filter(id => typeof id === 'string' && id && (!byId.has(id) || byId.get(id).subject === saved.subject));
       if (questionIds.length) {
         const submitted = attemptsBySession.get(saved.id);
         const answers = Object.fromEntries(questionIds.filter(id => submitted?.has(id)).map(id => [id, responseOf(submitted.get(id))]));
@@ -193,49 +218,38 @@
         const requestedIndex = Number.isInteger(saved.index) ? saved.index : 0;
         const lastAvailableIndex = firstUnanswered < 0 ? questionIds.length - 1 : firstUnanswered;
         const hintedQuestionIds = unique(Array.isArray(saved.hintedQuestionIds) ? saved.hintedQuestionIds : [])
-          .filter(id => questionIds.includes(id) && byId.get(id).hint);
-        active = {
+          .filter(id => questionIds.includes(id) && (!byId.has(id) || byId.get(id).hint));
+        const restored = {
           id: saved.id, subject: saved.subject, mode: sessionMode(saved.mode), questionIds,
           index: Math.max(0, Math.min(requestedIndex, lastAvailableIndex)), answers, hintedQuestionIds
         };
-        const focus = focusFor(saved.focus, active.mode, active.subject);
-        if (focus && questionIds.every(id => byId.get(id).focus?.includes(focus))) active.focus = focus;
+        const focus = focusFor(saved.focus, restored.mode, restored.subject);
+        if (focus && questionIds.every(id => !byId.has(id) || byId.get(id).focus?.includes(focus))) restored.focus = focus;
+        if (active || questionIds.some(id => !byId.has(id))) unavailable.active.push(restored);
+        else active = restored;
+        activeIds.add(saved.id);
       }
     }
-    const flags = Array.isArray(raw.flags) ? raw.flags.reduce((items, flag) => {
-      if (byId.has(flag?.questionId) && flagReasons.includes(flag.reason) && dateIsValid(flag.at)) {
+    const flags = storedRows(raw, 'flags').reduce((items, flag) => {
+      if (typeof flag?.questionId === 'string' && flag.questionId && flagReasons.includes(flag.reason) && dateIsValid(flag.at)) {
         const previous = items.get(flag.questionId);
         if (!previous || Date.parse(previous.at) < Date.parse(flag.at)) items.set(flag.questionId, { questionId: flag.questionId, reason: flag.reason, at: flag.at });
       }
       return items;
-    }, new Map()) : new Map();
+    }, new Map());
+    const knownFlags = [];
+    for (const flag of flags.values()) (byId.has(flag.questionId) ? knownFlags : unavailable.flags).push(flag);
     return {
       version: VERSION, language: raw.language === 'en' ? 'en' : 'zh',
-      preferences: normalizePreferences(raw.preferences), attempts, sessions, active, generated, plan: normalizePlan(raw.plan), flags: [...flags.values()]
+      preferences: normalizePreferences(raw.preferences), attempts, sessions, active, generated, plan: normalizePlan(raw.plan), flags: knownFlags,
+      ...(Object.values(unavailable).some(items => items.length) ? { unavailable } : {})
     };
   }
 
   function readState(storage, key, legacyKeys, questions) {
     for (const name of [key, ...[].concat(legacyKeys)]) {
       const saved = storage.getItem(name);
-      if (saved !== null) {
-        const raw = JSON.parse(saved);
-        const restored = normalizeState(raw, questions);
-        const known = new Set(questionsForState(questions, restored).map(question => question.id));
-        const answered = raw.attempts.filter(entry => typeof entry?.questionId === 'string' && entry.questionId
-          && typeof entry.sessionId === 'string' && entry.sessionId && dateIsValid(entry.at)).map(entry => entry.questionId);
-        const completed = raw.sessions.filter(session => typeof session?.id === 'string' && session.id
-          && dateIsValid(session.completedAt) && Array.isArray(session.questionIds)).flatMap(session => session.questionIds);
-        const active = Array.isArray(raw.active?.questionIds) ? raw.active.questionIds : [];
-        const flagged = Array.isArray(raw.flags) ? raw.flags.filter(flag => flagReasons.includes(flag?.reason)
-          && dateIsValid(flag.at)).map(flag => flag.questionId) : [];
-        if ([...answered, ...completed, ...active, ...flagged].some(id => typeof id === 'string' && id && !known.has(id))) {
-          const error = new Error('Saved history references an unavailable question');
-          error.name = 'IncompleteStudyCatalog';
-          throw error;
-        }
-        return restored;
-      }
+      if (saved !== null) return normalizeState(JSON.parse(saved), questions);
     }
     return createState();
   }
@@ -395,7 +409,7 @@
   }
 
   globalThis.SmartStudyCore = {
-    VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
+    VERSION, createState, normalizeState, readState, saveState, storedRows, updatePreferences, getMistakes, getStats, questionsForState,
     shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf, mistakeFocus,
     advanceSession, localDate, dailyStats,
     reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage,
