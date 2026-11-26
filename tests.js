@@ -194,11 +194,13 @@
     equal(Learning.practicePool(physics, { subject: 'physics', topic: 'average-speed', level: 'L5' }).length, 16);
   });
 
-  await test('每科各有 500 道免费题，科学知识点用未见的跨日复测升级', () => {
+  await test('五科各保有 500 道常规题及典型题，科学知识点用未见的跨日复测升级', () => {
     for (const subject of subjects) {
       const practice = questions.filter(item => item.subject === subject.id && !item.retired && !item.focusOnly && !item.diagnosticOnly);
-      equal(practice.length, 500);
-      equal(practice.filter(item => item.fields).length, 100);
+      const regular = practice.filter(item => !item.reviewedSchool);
+      equal(regular.length, 500);
+      equal(regular.filter(item => item.fields).length, 100);
+      equal(practice.length - regular.length, subject.id === 'english' ? 24 : 6);
     }
     const topic = 'forces-motion';
     const pool = Learning.practicePool(Core.createState(), { subject: 'physics', topic, level: 'L1' });
@@ -1514,7 +1516,7 @@
     for (const set of sets) {
       const items = set.ids.map(id => byId.get(id));
       equal(new Set(items.map(q => q.material)).size, 1);
-      assert(items.every(q => q.focusOnly && q.level === set.level && q.schoolSet === set.id));
+      assert(items.every(q => !q.focusOnly && q.reviewedSchool && q.level === set.level && q.schoolSet === set.id));
       for (const [i, value] of expected[set.id].entries()) {
         const answer = Array.isArray(value) ? value.map(String) : value;
         assert(Core.evaluateAnswer(items[i], answer).correct, items[i].id);
@@ -1557,6 +1559,50 @@
     await finishQuestions(() => true);
     equal(read().sessions.at(-1).correct, 3);
     fitsViewport();
+    await resetUi();
+    change('language', 'en');
+  });
+
+  await test('常规选题优先复核典型题、保留手动题型，同篇阅读及换数字变式靠后', async () => {
+    const state = Core.createState();
+    const examples = [
+      ['english', 'reading', 'A2', 'choice'],
+      ['english', 'grammar', 'A2', 'fill'],
+      ['math', 'algebra', 'L2', 'fill'],
+      ['physics', 'ohmic-current', 'L3', 'fill'],
+      ['chemistry', 'mass-percentage', 'L3', 'fill'],
+      ['biology', 'trait-frequency', 'L4', 'fill']
+    ];
+    for (const [subject, topic, level, format] of examples) {
+      const options = { subject, topic, level, format };
+      const items = Learning.practiceIds(state, options, () => 0.5).map(id => byId.get(id));
+      assert(items[0].reviewedSchool, subject + '/' + topic);
+      assert(items.every(q => (q.fields ? 'fill' : 'choice') === format && q.level === level));
+      const families = new Set(items.map(Learning.practiceFamily)).size;
+      equal(new Set(items.slice(0, families).map(Learning.practiceFamily)).size, families);
+    }
+    const mixed = Learning.practiceIds(state, { subject: 'math', topic: 'algebra', level: 'L2', format: 'all' }, () => 0.5);
+    equal(new Set(mixed.slice(0, 2).map(id => Boolean(byId.get(id).fields))).size, 2);
+    const archived = byId.get('school-garden-1');
+    const revised = byId.get('school-garden-1@2');
+    assert(archived.retired && revised.reviewedSchool && revised.material.body.en.includes('(open) a garden'));
+    const saved = Core.startSession(state, questions.map(q => q === archived ? { ...q, retired: false } : q),
+      { subject: 'english', ids: [archived.id], count: 1 });
+    const restored = Backup.parse(Backup.serialize(saved), questions);
+    equal(restored.active.questionIds, [archived.id]);
+    assert(Core.evaluateAnswer(archived, ['opened']).correct);
+
+    await resetUi();
+    await openSubject('math');
+    const skip = document.querySelector('[data-action="skip-placement"]');
+    if (skip) skip.click();
+    change('topic', 'algebra');
+    change('difficulty', 'L2');
+    change('format', 'all');
+    submitForm();
+    await waitElement('#question-title');
+    assert(current().reviewedSchool && element('.question-tags').textContent.includes('已复核典型题'));
+    assert(document.querySelector('.school-material[open]'));
     await resetUi();
     change('language', 'en');
   });
@@ -1608,6 +1654,7 @@
     await waitElement('#practice-form');
     equal(element('#topic').value, 'functions');
     change('difficulty', 'L5');
+    change('format', 'choice');
     change('count', '5');
     assert(element('#setup-info').textContent.includes('13 questions'));
     submitForm();

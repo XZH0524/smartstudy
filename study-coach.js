@@ -503,7 +503,8 @@
       && !practisedSubjects.has(next.subject) && (next.subject !== 'math' || !state.preferences.mathPlacementDeferred)
       ? next.subject : '';
     const practice = practiceCount ? {
-      subject: next.subject, topic: next.topic, count: practiceCount, level: next.subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
+      subject: next.subject, topic: next.topic, count: practiceCount, format: 'all',
+      level: next.subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
     } : null;
     const upcoming = Object.entries(profile).filter(([id, value]) => matchesFocus(id) && !lessonFocuses.has(id) && value.due > today && value.due <= dayAt(now, 29))
       .map(([focus, value]) => ({ focus, date: value.due }))

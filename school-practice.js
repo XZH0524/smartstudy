@@ -4,7 +4,7 @@
   const same = value => bi(value, value);
   const sets = [];
 
-  function add(id, subject, topic, stage, level, title, body, items) {
+  function add(id, subject, topic, stage, level, title, body, items, revision = {}) {
     const material = { title, body };
     const entries = items.map(({ prompt, explanation, ...answer }, index) => ({
       id: 'school-' + id + '-' + (index + 1), subject, topic, level, prompt, explanation, material,
@@ -12,8 +12,15 @@
       ...(subject === 'english' ? { track: 'cefr', ...(topic === 'reading' ? { passageId: 'school-' + id } : {}) } : {}),
       ...answer
     }));
-    questions.push(...entries);
-    sets.push({ id, subject, stage, level, title, ids: entries.map(question => question.id) });
+    const current = entries.map((question, index) => {
+      const changes = revision[index + 1];
+      if (!changes) return { ...question, focusOnly: false, reviewedSchool: true };
+      questions.push({ ...question, retired: true });
+      return { ...question, ...changes, id: question.id + '@2', originalId: question.id, version: 2,
+        focusOnly: false, reviewedSchool: true };
+    });
+    questions.push(...current);
+    sets.push({ id, subject, stage, level, title, ids: current.map(question => question.id) });
   }
 
   function choice(prompt, options, answer, explanation) {
@@ -85,14 +92,23 @@
       bi('按顺序轮流发卡可减轻发卡对象完全由个人兴趣决定的问题。', 'Alternating offers reduces the role of visitors’ initial interest in who receives a card.'))
   ]);
 
-  add('garden', 'english', 'grammar', 'junior', 'A2', bi('校园菜园', 'The School Garden'), same(
-    'Our school garden (1) ___ (open) last April. Every Friday, our science teacher (2) ___ (bring) a group there after lunch. The taller plants grow next (3) ___ the wall. Last week we grew enough beans (4) ___ (share) with another class.'
+  const gardenTitle = bi('校园菜园', 'The School Garden');
+  const gardenBody = 'Our school garden (1) ___ (open) last April. Every Friday, our science teacher (2) ___ (bring) a group there after lunch. The taller plants grow next (3) ___ the wall. Last week we grew enough beans (4) ___ (share) with another class.';
+  const revisedGarden = { material: { title: gardenTitle, body: same(gardenBody.replace('Our school garden (1) ___ (open)', 'Our school (1) ___ (open) a garden')) } };
+  add('garden', 'english', 'grammar', 'junior', 'A2', gardenTitle, same(
+    gardenBody
   ), [
     fill(bi('填第 1 空，用 open 的适当形式。', 'Fill blank 1 with the correct form of open.'), bi('last April 是过去时间，用 opened。','“Last April” calls for the past simple “opened”.'), [['□','□','opened']], 'text'),
     fill(bi('填第 2 空，用 bring 的适当形式。', 'Fill blank 2 with the correct form of bring.'), bi('Every Friday 表示习惯，单数主语对应 brings。','The regular action takes “brings” with a singular subject.'), [['□','□','brings']], 'text'),
     fill(bi('填第 3 空，补一个介词。', 'Fill blank 3 with a preposition.'), bi('next to 表示在……旁边。','“Next to” means beside.'), [['□','□','to']], 'text'),
     fill(bi('填第 4 空，用 share 的适当形式。', 'Fill blank 4 with the correct form of share.'), bi('enough + 名词 + to do 表示足够做某事。','“Enough” plus the noun can be followed by the infinitive “to share”.'), [['□','□','to share']], 'text')
-  ]);
+  ], {
+    1: { ...revisedGarden, prompt: bi('填第 1 空，用 open 的一般过去时。', 'Fill blank 1 with the past simple form of open.') },
+    2: revisedGarden,
+    3: revisedGarden,
+    4: { ...revisedGarden,
+      prompt: bi('填第 4 空，用 to 加 share 的适当形式。', 'Fill blank 4 with to and the correct form of share.') }
+  });
 
   add('journals', 'english', 'grammar', 'senior', 'B1', bi('观鸟日志', 'The Bird Journal'), same(
     'In May, a group of students set out (1) ___ (record) the birds in their neighbourhood. The first photographs (2) ___ (take) from the school roof last Friday. The team now meets (3) ___ (regular) to compare its records. The project has changed the way (4) ___ which the students notice their surroundings.'
@@ -101,7 +117,7 @@
     fill(bi('填第 2 空，用 take 的适当形式。','Fill blank 2 with the correct form of take.'),bi('照片是被拍摄的，last Friday 指过去，用 were taken。','The plural photographs were acted on in the past: “were taken”.'),[['□','□','were taken']],'text'),
     fill(bi('填第 3 空，用 regular 的适当形式。','Fill blank 3 with the correct form of regular.'),bi('修饰动词 meets，用副词 regularly。','The verb “meets” is modified by the adverb “regularly”.'),[['□','□','regularly']],'text'),
     fill(bi('填第 4 空，补一个介词。','Fill blank 4 with a preposition.'),bi('the way in which 表示方式。','The fixed construction is “the way in which”.'),[['□','□','in']],'text')
-  ]);
+  ], { 2: { prompt: bi('填第 2 空，用 be 和 take 构成一般过去时的被动形式。', 'Fill blank 2 with the past simple passive of take, using be.') } });
 
   function number(zh, en, expected, reasonZh, reasonEn, unit = '') {
     const label = unit ? '□ ' + unit : '□';
@@ -117,7 +133,8 @@
       bi('6(18 − x) + 10x = 132，展开并减去 108，得到 4x = 24。','Expand 6(18 − x) + 10x = 132 and subtract 108 from both sides to get 4x = 24.'),
       [['a = □','a = □',4],['b = □','b = □',24]]),
     number('卖出了多少张成人票？', 'How many adult tickets were sold?', 6, '4x = 24，所以 x = 6。检验：12 × 6 + 6 × 10 = 132。', '4x = 24 gives x = 6. Check: 12 × 6 + 6 × 10 = 132.')
-  ]);
+  ], { 2: { prompt: bi('设成人票卖出 x 张。展开 6(18 − x) + 10x = 132，合并 x 项，再将 108 移到右边。填写所得 ax = b 的 a、b。',
+    'Let x be the number of adult tickets. Expand 6(18 − x) + 10x = 132, combine the x terms and subtract 108 from both sides. Enter a and b in the resulting ax = b.') } });
 
   add('fountain', 'math', 'functions', 'senior', 'L4', bi('二次函数与抛物线', 'Quadratic functions and a parabola'), bi(
     '一股喷泉的水沿抛物线运动。距出水口的水平距离为 x 米时，水流离地高度为 h(x) = −x² + 6x 米，其中 0 ≤ x ≤ 6。',

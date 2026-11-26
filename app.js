@@ -86,7 +86,7 @@
     allTopics: ['所有知识点', 'All topics'], autoLevel: ['按知识点推荐', 'Recommended by topic'],
     count: ['题目数量', 'Number of questions'],
     questionCount: ['{n} 题', '{n} questions'], allQuestions: ['全部匹配题目', 'All matching questions'],
-    setupInfo: ['当前匹配 {n} 道，本次练习 {count} 道，优先安排没做过的题。', '{n} questions match. This set includes {count}, with untried questions first.'],
+    setupInfo: ['当前匹配 {n} 道，本次练习 {count} 道。优先安排没做过的题，并轮换题型和情境。', '{n} questions match. This set includes {count}, with untried questions and varied tasks first.'],
     mathScale: ['题目难度按知识点分别推荐。掌握情况以作答证据为准。', 'Practice difficulty is suggested per topic. Mastery depends on the available evidence.'],
     scienceScope: ['课程范围', 'Curriculum scope'], generalScience: ['通用科学', 'General science'],
     scopePlanned: ['{course} 专项课程映射待审核。请选择通用科学使用现有题目。', '{course} curriculum mapping is awaiting review. Select General science to use the current bank.'],
@@ -122,6 +122,7 @@
     schoolGrammar: ['语篇填空', 'Passage gap-fill'],
     schoolCalculate: ['材料与计算', 'Data and calculations'],
     schoolMaterial: ['查看材料', 'View the shared material'],
+    schoolReviewed: ['已复核典型题', 'Reviewed school-style question'],
     starterResult: ['典型题热身', 'Level examples'],
     recommendedSet: ['按推荐练 5 题', 'Practise 5 at my suggested levels'],
     defaultTrial: ['自动 · 先试 {level}', 'Automatic · start at {level}'],
@@ -259,7 +260,7 @@
   const aiFormats = { mixed: 'aiMixed', fill: 'aiFill', calculation: 'aiCalculation', choice: 'aiChoice' };
   let selected = null;
   let selectedQuestion = '';
-  let setup = { subject: 'english', level: state.preferences.englishLevel || 'auto', topic: '', count: '8', track: 'cefr' };
+  let setup = { subject: 'english', level: state.preferences.englishLevel || 'auto', topic: '', count: '8', track: 'cefr', format: 'all' };
   let forceSetup = false;
   let mistakeFilter = 'all';
   let resultId = null;
@@ -902,7 +903,6 @@
 
   function modeLabel(mode, question) {
     if (mode === 'pilot') return t('pilotRoute');
-    if (mode === 'practice' && question?.schoolSet) return t('schoolSets');
     if (mode === 'practice' && question?.purpose === 'starter') return t('starterResult');
     if (mode === 'spaced' && question?.purpose === 'followup') return t('lessonCheck');
     if (accountEnabled && mode === 'science-ai') return t('sciencePreviewMode');
@@ -1004,6 +1004,7 @@
       </div>
       <section class="panel question-card">
         <div class="question-tags"><span class="tag">${text(topics[question.topic])}</span><span class="tag">${escapeHtml(question.level)}</span>
+          ${question.reviewedSchool ? `<span class="tag">${t('schoolReviewed')}</span>` : ''}
           ${question.ai ? `<span class="tag">${t(accountEnabled ? 'aiPreviewBank' : 'aiGenerated')}</span>` : ''}
           ${question.ai || question.sample || question.format === 'fill' ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
@@ -1631,7 +1632,7 @@
         selected = null;
         resultId = null;
         backupStatus = null;
-        setup = { subject: 'english', level: 'auto', topic: '', count: '8', track: 'cefr' };
+        setup = { subject: 'english', level: 'auto', topic: '', count: '8', track: 'cefr', format: 'all' };
         render();
       }
     } catch (_) { render(); reportSetupError(t('error')); }
@@ -1684,7 +1685,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.28';
+    script.src = 'tests.js?v=2.29';
     document.body.appendChild(script);
   }
 })();

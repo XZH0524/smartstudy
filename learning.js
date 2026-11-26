@@ -202,6 +202,15 @@
       && (!topic || question.topic === topic) && question.level === (profiles ? profiles[question.topic].level : level));
   }
 
+  function practiceFamily(question) {
+    if (question.schoolSet) return 'set:' + question.schoolSet;
+    if (question.passageId) return 'reading:' + question.passageId;
+    if (question.equationFamily) return 'equation:' + question.equationFamily;
+    const stem = question.prompt.en.normalize('NFKC').toLowerCase().replace(/\s+/gu, ' ').trim();
+    const pattern = stem.replace(/[−+\-]?\d+(?:\.\d+)?/gu, '#');
+    return question.topic + ':' + pattern;
+  }
+
   function practiceIds(state, options, random = Math.random) {
     const pool = practicePool(state, options);
     const topics = topicsBySubject[options.subject];
@@ -209,28 +218,37 @@
       : Science.subjects.includes(options.subject) ? Core.getMistakes(state, pool).map(item => item.question.topic) : [];
     const orderedTopics = [...new Set([...ranked, ...topics])];
     const attempted = new Set(state.attempts.map(attempt => attempt.questionId));
-    const read = options.subject === 'english' ? new Set(state.attempts.map(attempt => Core.readingPassage(byId.get(attempt.questionId)))) : null;
+    const families = new Map(pool.map(q => [q.id, practiceFamily(q)]));
+    const knownFamilies = new Set([...attempted].map(id => byId.get(id)).filter(q => q?.subject === options.subject).map(practiceFamily));
     const ids = [];
 
     // Finish untried questions in the matching pool before repeating any.
     for (const repeat of [false, true]) {
+      const firstIndex = ids.length;
       const queues = orderedTopics.map(topic => {
         const queue = Core.shuffled(pool.filter(question => question.topic === topic && attempted.has(question.id) === repeat), random);
-        if (topic !== 'algebra' && topic !== 'reading') return queue;
-        const first = new Map();
+        queue.sort((a, b) => Number(knownFamilies.has(families.get(a.id))) - Number(knownFamilies.has(families.get(b.id)))
+          || Number(Boolean(b.reviewedSchool)) - Number(Boolean(a.reviewedSchool)));
+        const represented = new Set();
+        const first = [], later = [];
         for (const item of queue) {
-          const group = item.equationFamily || Core.readingPassage(item);
-          if (group && !first.has(group)) first.set(group, item);
+          const family = families.get(item.id);
+          (represented.has(family) ? later : first).push(item);
+          represented.add(family);
         }
-        const priority = [...first.values()];
-        if (topic === 'reading') priority.sort((a, b) => Number(read.has(Core.readingPassage(a))) - Number(read.has(Core.readingPassage(b))));
-        const preferred = new Set(priority);
-        return [...priority, ...queue.filter(item => !preferred.has(item))];
+        return { first, later };
       });
-      const longest = Math.max(0, ...queues.map(queue => queue.length));
-      for (let index = 0; index < longest; index++) {
-        for (const queue of queues) {
-          if (queue[index]) ids.push(queue[index].id);
+      for (const phase of ['first', 'later']) {
+        const longest = Math.max(0, ...queues.map(queue => queue[phase].length));
+        for (let index = 0; index < longest; index++) {
+          for (const queue of queues) {
+            if (queue[phase][index]) ids.push(queue[phase][index].id);
+          }
+        }
+        if (phase === 'first' && options.format === 'all' && ids.length > firstIndex + 2) {
+          const fields = Boolean(byId.get(ids[firstIndex]).fields);
+          const other = ids.findIndex((id, index) => index > firstIndex && Boolean(byId.get(id).fields) !== fields);
+          if (other > firstIndex + 1) ids.splice(firstIndex + 1, 0, ids.splice(other, 1)[0]);
         }
       }
     }
@@ -264,6 +282,6 @@
 
   globalThis.SmartStudyLearning = {
     EVIDENCE_COUNT, diagnosticIds, placementResult, latestPlacement, mathProfile,
-    englishRecommendations, englishProfile, subjectProfile, practicePool, practiceIds, topicProgress
+    englishRecommendations, englishProfile, subjectProfile, practicePool, practiceIds, practiceFamily, topicProgress
   };
 })();
