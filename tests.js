@@ -2004,6 +2004,28 @@
     assert(empty.every(task => !task.ready && !task.id));
   });
 
+  await test('两步方程复测优先换写法，做过的题不再用，缺题时用同写法的同级新题', () => {
+    const ticket = byId.get('lesson-equation-tickets-0');
+    const tank = byId.get('lesson-equation-water-tank-0');
+    const cards = byId.get('lesson-equation-card-boxes-0');
+    const finish = (state, question, wrong) => {
+      const run = start({ subject: 'math', ids: [question.id], count: 1 }, state);
+      const response = question.fields.map((field, i) => String(field.expected + (wrong && i === 0 ? 1 : 0)));
+      return Core.advanceSession(Core.gradeAnswer(run, questions, response, knownTime), questions, knownTime);
+    };
+    const practiced = finish(Core.createState(), tank, false);
+    const missed = finish(practiced, ticket, true);
+    const due = new Date(laterTime);
+    const [varied] = Coach.lessonChecks(missed, questions, due);
+    assert(varied.ready);
+    equal(varied.id, cards.id);
+    const [fallback] = Coach.lessonChecks(finish(missed, cards, false), questions, due);
+    const replacement = byId.get(fallback.id);
+    assert(fallback.ready && replacement.level === ticket.level);
+    equal(Core.equationStructure(replacement), Core.equationStructure(ticket));
+    assert(![ticket, tank, cards].some(q => Core.equationKey(q) === Core.equationKey(replacement)));
+  });
+
   await test('英语旧错题隔天在学习中心发起同类新题，答错时先看线索再约下一天', async () => {
     await resetUi();
     const yesterday = new Date();

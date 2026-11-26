@@ -286,8 +286,10 @@
       const matches = candidates.filter(q => source.stepMethod ? q.stepMethod === source.stepMethod
         : source.evidenceType ? q.evidenceType === source.evidenceType
         : source.equationStep && q.equationStep && Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
-      const changedPresentation = matches.find(q => q.equationPresentation && q.equationPresentation !== source.equationPresentation);
-      const id = resume ? activeQuestion.id : (changedPresentation || matches[0] || candidates[0])?.id;
+      const structure = Core.equationStructure(source);
+      const varied = structure ? candidates.filter(q => Core.equationStructure(q) !== structure) : [];
+      const preferred = varied.find(q => matches.includes(q)) || varied[0] || matches[0] || candidates[0];
+      const id = resume ? activeQuestion.id : preferred?.id;
       if (id && due <= today) used.add(id);
       return { focus, due, id, ready: Boolean(id && due <= today), resume };
     });

@@ -1567,7 +1567,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.21';
+    script.src = 'tests.js?v=2.22';
     document.body.appendChild(script);
   }
 })();
