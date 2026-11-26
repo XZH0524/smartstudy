@@ -101,7 +101,18 @@
     pilotRoute: ['试点学习路线', 'Pilot learning path'],
     pilotPrerequisites: ['学习顺序', 'Learning sequence'],
     pilotPending: ['题单待复核，试学入口暂未开放。', 'The questions are awaiting review. The pilot is currently closed.'],
-    pilotStartingLater: ['题单已通过 DeepSeek 复核和程序核对。试学入口暂未开放。', 'DeepSeek review and automated answer checks are complete. The pilot is currently closed.'],
+    pilotReviewed: ['题单已通过 DeepSeek 复核和程序核对。复测从专项练习完成日算起。', 'DeepSeek review and automated answer checks are complete. Check dates are counted from the day you finish targeted practice.'],
+    pilotOpenStage: ['开始{stage}', 'Start {stage}'],
+    pilotLocked: ['完成前一步后开放', 'Available after the previous step'],
+    pilotOnDate: ['{date} 起可做', 'Available from {date}'],
+    pilotDone: ['已完成', 'Finished'],
+    pilotGuided: ['看分步例题', 'Read a worked example'],
+    pilotPersonalHint: ['根据刚才的作答，先留意这一步', 'From your first answer, review this step'],
+    pilotTryExample: ['看完例题后，自己做一遍再继续。', 'After reading the example, try it yourself to continue.'],
+    pilotGoPath: ['回到试点路线', 'Back to the pilot path'],
+    pilotReport: ['试点路线的独立作答', 'Independent answers in the pilot paths'],
+    pilotReportBasis: ['按整条路线显示起点、隔天和第 7 天的结果。每次只有 1 道题。', 'See each path’s initial, next-day and Day 7 results. There is one question at each check.'],
+    pilotIndependent: ['独立答对 {correct}/{total} 题', '{correct}/{total} correct without hints'],
     report: ['学习报告', 'Study report'], reportIntro: ['根据已提交的作答比较表现，并查看下一步可练的知识点。', 'Compare submitted answers and choose what to practise next.'],
     reportToday: ['今天', 'Today'], reportWeek: ['近 7 天', 'Last 7 days'], reportMonth: ['近 30 天', 'Last 30 days'], reportQuarter: ['近 90 天', 'Last 90 days'],
     reportFilters: ['报告时段', 'Report period'], reportTime: ['记录到的作答时间', 'Observed answering time'],
@@ -303,18 +314,46 @@
       </section>`;
     }
 
-    function renderPilot(subject) {
+    function pilotStatus(row) {
+      if (row.session) {
+        if (row.stage.evidence !== 'independent') return t('pilotDone');
+        return `${t('pilotIndependent', { correct: row.answers.filter(answer => answer.correct).length, total: row.answers.length })} · ${formatDate(Core.localDate(new Date(row.session.completedAt)))}`;
+      }
+      return row.ready ? t('coachDueNow') : row.due ? t('pilotOnDate', { date: formatDate(row.due) }) : t('pilotLocked');
+    }
+
+    function renderPilot(state, subject) {
       const route = Pilot?.routes[subject];
       if (!route) return '';
       const approved = route.stages.every(stage => stage.items.every(item =>
         item.review.status === 'approved' && item.review.reviewer === 'DeepSeek'));
-      return `<details class="study-details" id="pilot-path">
-        <summary>${t('pilotRoute')} · ${text(topics[route.topic])} · ${escapeHtml(route.level)}</summary>
-        <p class="field-help">${t(approved ? 'pilotStartingLater' : 'pilotPending')}</p>
-        <p><strong>${t('pilotPrerequisites')}</strong></p>
-        <ol>${Pilot.skillPath(route).map(skill => `<li>${text(skill.label)}</li>`).join('')}</ol>
-        <ol>${route.stages.map(stage => `<li>${text(stage.label)}</li>`).join('')}</ol>
-      </details>`;
+      return `<section class="study-details pilot-path" id="pilot-path" aria-labelledby="pilot-title">
+        <h3 id="pilot-title" tabindex="-1">${t('pilotRoute')} · ${text(topics[route.topic])} · ${escapeHtml(route.level)}</h3>
+        <p class="field-help">${t(approved ? 'pilotReviewed' : 'pilotPending')}</p>
+        <ol class="study-skill-list">${Pilot.progress(state, route).map(row => `<li data-pilot-stage="${row.stage.id}">
+          <strong>${text(row.stage.label)}</strong>
+          ${approved && row.ready ? button(state.active?.subject === subject && Pilot.sessionStage(state.active) === row.stage
+            ? t('resume') : t('pilotOpenStage', { stage: row.stage.label[language()] }), 'pilot-start', 'secondary',
+            `data-subject="${subject}" data-stage="${row.stage.id}"`)
+            : approved ? `<span class="field-help">${pilotStatus(row)}</span>` : ''}
+        </li>`).join('')}</ol>
+        <details class="study-details"><summary>${t('pilotPrerequisites')}</summary><ol>${Pilot.skillPath(route)
+          .map(skill => `<li>${text(skill.label)}</li>`).join('')}</ol></details>
+      </section>`;
+    }
+
+    function renderPilotReport(state) {
+      const paths = Object.values(Pilot.routes).map(route => ({ route, rows: Pilot.progress(state, route) }))
+        .filter(({ rows }) => rows[0].session);
+      if (!paths.length) return '';
+      return `<section class="panel study-panel" aria-labelledby="pilot-report-title">
+        <h2 id="pilot-report-title">${t('pilotReport')}</h2><p class="field-help">${t('pilotReportBasis')}</p>
+        <div class="study-grid">${paths.map(({ route, rows }) => `<section data-pilot-report="${route.subject}">
+          <h3>${subjectName(route.subject)} · ${text(topics[route.topic])}</h3>
+          <ul class="study-skill-list">${rows.filter(row => row.stage.evidence === 'independent').map(row => `<li>
+            <strong>${text(row.stage.label)}</strong><span class="field-help">${pilotStatus(row)}</span></li>`).join('')}</ul>
+          ${button(t('pilotGoPath'), 'pilot-path', 'secondary', `data-subject="${route.subject}"`)}
+        </section>`).join('')}</div></section>`;
     }
 
     function renderRoadmap(state, catalog, preferredSubject) {
@@ -337,7 +376,7 @@
         <div class="filters" role="group" aria-label="${t('subjects')}">${subjects.filter(item => item.available).map(item =>
           `<button type="button" class="filter-button ${item.id === subject ? 'active' : ''}" aria-pressed="${item.id === subject}"
             data-action="roadmap-subject" data-subject="${item.id}">${text(item.label)}</button>`).join('')}</div>
-        ${renderPilot(subject)}
+        ${renderPilot(state, subject)}
         ${branch('')}
       </section>`;
     }
@@ -345,6 +384,8 @@
     function renderPlan(state, catalog, preferredSubject) {
       const plan = Coach.learningPlan(state, catalog);
       const settings = plan.settings;
+      const readyChecks = Object.values(Pilot.routes).flatMap(route => Pilot.progress(state, route)
+        .filter(row => row.ready && row.stage.day > 0).map(row => ({ route, stage: row.stage })));
       function reviews(list) {
         const focuses = [...new Set(list.map(item => item.focus).filter(Boolean))];
         const ids = [...new Set(list.map(item => item.topic).filter(Boolean))];
@@ -352,6 +393,10 @@
       }
       return `${heading(t('plan'), t('planSubtitle'))}
         ${renderToday(plan, state.active)}
+        ${readyChecks.length ? `<section class="panel study-panel"><h2>${t('reportChecks')}</h2><div class="study-actions">
+          ${readyChecks.map(({ route, stage }) => button(`${subjectName(route.subject)} · ${text(stage.label)}`, 'pilot-start', 'secondary',
+            `data-subject="${route.subject}" data-stage="${stage.id}"`)).join('')}
+        </div></section>` : ''}
         ${renderLessonChecks(plan.nextDay)}
         <section class="panel study-panel"><h2>${t('evidenceLessons')}</h2><div class="study-actions">
           ${Object.entries(globalThis.EachVeyaLessons.workshops).map(([subject, label]) =>
@@ -414,6 +459,7 @@
             recent.total ? t('reportTimeCoverage', recent) : '')}</dl>
           <p class="field-help">${recent.total && previous.total ? t('reportDelta', { ...recent, previousCorrect: previous.correct, previousTotal: previous.total }) : t('reportNoComparison')}</p>
         </section>
+        ${renderPilotReport(state)}
         ${recent.total ? renderCharts(report.daily, days === 90) : ''}
         ${report.checks.length ? `<section class="panel study-panel report-checks"><h2>${t('reportChecks')}</h2>
           <ul class="study-skill-list">${report.checks.map(row => `<li><span class="section-note">${subjectName(skills[row.focus].subject)}</span>

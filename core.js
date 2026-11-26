@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const VERSION = 9;
+  const VERSION = 10;
   const AI = globalThis.EachVeyaAi;
   const { levels: { english: englishLevels }, topicsBySubject } = globalThis.SmartStudyData;
   const SkillData = globalThis.EachVeyaSkills;
@@ -9,8 +9,8 @@
   const makeId = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const focusModes = ['probe', 'retake', 'spaced'];
   const flagReasons = ['wording', 'answer', 'translation'];
-  const hasDelayedFeedback = mode => mode === 'diagnostic' || focusModes.includes(mode);
-  const sessionMode = value => ['review', 'diagnostic', 'ai', 'science-ai', 'algebra-sample', ...focusModes].includes(value) ? value : 'practice';
+  const hasDelayedFeedback = mode => mode === 'diagnostic' || mode === 'pilot' || focusModes.includes(mode);
+  const sessionMode = value => ['review', 'diagnostic', 'pilot', 'ai', 'science-ai', 'algebra-sample', ...focusModes].includes(value) ? value : 'practice';
   const isValidDuration = value => Number.isInteger(value) && value > 0 && value <= 600_000;
 
   function focusFor(value, mode, subject) {
@@ -138,7 +138,7 @@
   }
 
   function normalizeState(raw, questions) {
-    if (!raw || ![1, 2, 3, 4, 5, 6, 7, 8, VERSION].includes(raw.version) || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
+    if (!raw || !Number.isInteger(raw.version) || raw.version < 1 || raw.version > VERSION || !Array.isArray(raw.attempts) || !Array.isArray(raw.sessions)) {
       throw new Error('Unsupported or damaged study data');
     }
     const generated = [];
@@ -269,7 +269,8 @@
 
   function reportableAttempts(state) {
     const completed = new Set(state.sessions.filter(session => hasDelayedFeedback(session.mode)).map(session => session.id));
-    return state.attempts.filter(attempt => !hasDelayedFeedback(attempt.mode) || completed.has(attempt.sessionId));
+    return state.attempts.filter(attempt => attempt.mode !== 'pilot'
+      && (!hasDelayedFeedback(attempt.mode) || completed.has(attempt.sessionId)));
   }
 
   function getMistakes(state, questions) {
@@ -318,6 +319,10 @@
     const questionIds = chooseQuestions(questions, options, random);
     if (!questionIds.length) throw new Error('No questions match');
     const mode = sessionMode(options.mode);
+    if (mode !== 'pilot' && questions.some(q => q.purpose === 'pilot-check' && questionIds.includes(q.id))) {
+      throw new Error('Reserved pilot question');
+    }
+    validatePilotStage(state, { mode, subject: options.subject, questionIds }, options.now || new Date());
     const focus = focusFor(options.focus, mode, options.subject);
     if (focusModes.includes(mode) && (!focus || !questionIds.every(id => questions.find(question => question.id === id)?.focus?.includes(focus)))) {
       throw new Error('Invalid focused practice');
@@ -325,6 +330,16 @@
     return { ...state, active: {
       id: makeId(), subject: options.subject, mode, questionIds, index: 0, answers: {}, hintedQuestionIds: [], ...(focus ? { focus } : {})
     } };
+  }
+
+  function validatePilotStage(state, session, date) {
+    if (session.mode !== 'pilot') return;
+    const pilot = globalThis.EachVeyaPilot;
+    const stage = pilot?.sessionStage(session);
+    if (!stage || !stage.items.every(item => item.review.status === 'approved')
+      || !pilot.progress(state, pilot.routes[session.subject], date).some(row => row.stage === stage && row.ready)) {
+      throw new Error('Pilot stage is unavailable');
+    }
   }
 
   function startEquationSession(state, questions, specs, format, sample) {
@@ -373,6 +388,7 @@
     if (!score) throw new Error('Invalid answer');
     if (!dateIsValid(at)) throw new Error('Invalid timestamp');
     if (session.answers[question.id] !== undefined) return state;
+    validatePilotStage(state, session, new Date(at));
     const attempt = {
       sessionId: session.id, questionId: question.id, ...answerRecord(score), at,
       mode: session.mode, hinted: session.hintedQuestionIds.includes(question.id),
@@ -386,6 +402,7 @@
     if (!session || session.answers[session.questionIds[session.index]] === undefined) throw new Error('Answer before continuing');
     if (session.index < session.questionIds.length - 1) return { ...state, active: { ...session, index: session.index + 1 } };
     if (session.questionIds.some(id => session.answers[id] === undefined) || !dateIsValid(at)) throw new Error('Session is incomplete');
+    validatePilotStage(state, session, new Date(at));
     const byId = new Map(questions.map(question => [question.id, question]));
     const completed = {
       id: session.id, subject: session.subject, mode: session.mode, questionIds: [...session.questionIds],

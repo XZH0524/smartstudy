@@ -6,6 +6,7 @@
   const Science = globalThis.EachVeyaScience;
   const Coach = globalThis.EachVeyaCoach;
   const Lessons = globalThis.EachVeyaLessons;
+  const Pilot = globalThis.EachVeyaPilot;
   const schoolPractice = globalThis.EachVeyaSchoolPractice;
   const QuestionVersions = globalThis.EachVeyaQuestionVersions;
   const focusSkills = globalThis.EachVeyaSkills?.skills;
@@ -28,8 +29,11 @@
   const workshopSubjects = new Set(data?.questions?.filter(question => !question.retired && question.purpose === 'followup').map(question => question.subject));
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && Lessons.starterPairs?.[id]?.length === 2 && workshopSubjects.has(id)));
-  if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 3
-    || Core?.VERSION !== 9 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup, schoolPractice].some(component => !component)) {
+  const availableQuestions = new Set(data?.questions?.filter(question => !question.retired).map(question => question.id));
+  const completePilots = typeof Pilot?.progress === 'function' && data?.subjects?.every(({ id, available }) =>
+    !available || Pilot.routes[id]?.stages.every(stage => stage.items.every(item => availableQuestions.has(item.questionId))));
+  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 3
+    || Core?.VERSION !== 10 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup, schoolPractice].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -54,7 +58,7 @@
   const accountEnabled = Boolean(Account?.enabled && !testing);
   // The original keys also hold the records created before the rename.
   const storagePrefix = testing ? 'smart-study.tests' : 'smart-study';
-  const LEGACY_STORAGE_KEYS = [8, 7, 6, 5, 4, 3, 2, 1].map(version => `${storagePrefix}.v${version}`);
+  const LEGACY_STORAGE_KEYS = [9, 8, 7, 6, 5, 4, 3, 2, 1].map(version => `${storagePrefix}.v${version}`);
   const STORAGE_KEY = `${storagePrefix}.v${Core.VERSION}`;
   const copy = {
     ...StudyUI.copy,
@@ -897,6 +901,7 @@
   }
 
   function modeLabel(mode, question) {
+    if (mode === 'pilot') return t('pilotRoute');
     if (mode === 'practice' && question?.schoolSet) return t('schoolSets');
     if (mode === 'practice' && question?.purpose === 'starter') return t('starterResult');
     if (mode === 'spaced' && question?.purpose === 'followup') return t('lessonCheck');
@@ -951,6 +956,7 @@
   function renderQuestion() {
     const session = state.active;
     const question = byId.get(session.questionIds[session.index]);
+    const pilotStage = Pilot.sessionStage(session);
     const answer = session.answers[question.id];
     const graded = answer !== undefined;
     const diagnostic = session.mode === 'diagnostic';
@@ -988,7 +994,8 @@
         ${!graded || correct ? '' : study.renderClue(question, score, nextDay)}
         ${guidedMiss ? `<details class="study-details"><summary>${t('explanation')}</summary>${solution}</details>` : solution}
       </div>`;
-    return `<div class="page-heading"><div><p class="eyebrow">${modeLabel(session.mode, question)}</p><h1>${subjectName(session.subject)}</h1></div>${button(t('exit'), 'home', 'ghost')}</div>
+    const exit = pilotStage ? button(t('pilotGoPath'), 'pilot-path', 'ghost', `data-subject="${session.subject}"`) : button(t('exit'), 'home', 'ghost');
+    return `<div class="page-heading"><div><p class="eyebrow">${pilotStage ? text(pilotStage.label) : modeLabel(session.mode, question)}</p><h1>${subjectName(session.subject)}</h1></div>${exit}</div>
     <div class="practice-layout">
       <div class="question-top"><span>${t('progress', { current: session.index + 1, total })}</span>
         <span>${t('progressLabel', { subject: subjects.find(item => item.id === session.subject).label[state.language], done, total })}</span></div>
@@ -1001,6 +1008,7 @@
           ${question.ai || question.sample || question.format === 'fill' ? `<span class="tag">${t(aiFormats[question.format || 'choice'])}</span>`
             : question.skill ? `<span class="tag">${text(skills[question.skill])}</span>` : ''}</div>
         ${renderMaterial(question.material, true)}
+        ${pilotStage?.id === 'lesson' ? renderPilotLesson(session.subject, question) : ''}
         <h2 id="question-title" class="question-title">${text(question.prompt)}</h2>
         ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : ''}
         ${question.fields ? renderNumericFields(question, choice || [], graded, showGrade ? score : null, guidedMiss)
@@ -1017,6 +1025,22 @@
               : button(t('submit'), 'grade', '', selected === null ? 'disabled' : '')}
         </div>
       </section>
+    </div>`;
+  }
+
+  function renderPilotLesson(subject, question) {
+    const [entry] = Pilot.progress(state, Pilot.routes[subject]);
+    const attempt = entry.answers[0];
+    let hint = '';
+    if (attempt && !attempt.correct) {
+      const source = byId.get(attempt.questionId);
+      const marks = Core.evaluateAnswer(source, Core.responseOf(attempt)).marks;
+      hint = text(Pilot.entryHints[subject][marks?.[0] ? 1 : 0]);
+    }
+    return `<div class="worked-example">
+      ${hint ? `<p><strong>${t('pilotPersonalHint')}</strong></p><p>${hint}</p>` : ''}
+      <details class="study-details" open><summary>${t('pilotGuided')}</summary><p>${text(question.explanation)}</p></details>
+      <p>${t('pilotTryExample')}</p>
     </div>`;
   }
 
@@ -1056,25 +1080,29 @@
     if (!session) return `${heading(t('result'))}
       <section class="panel empty-state practice-layout"><p>${t('resultEmpty')}</p>${button(t('start'), 'setup')}</section>`;
     const attempts = state.attempts.filter(attempt => attempt.sessionId === session.id);
+    const pilotStage = Pilot.sessionStage(session);
     const wrong = attempts.filter(attempt => !attempt.correct && !byId.get(attempt.questionId)?.retired);
     const placement = Learning.placementResult(state, session);
     const diagnostic = session.mode === 'diagnostic';
     const nextDay = Coach.lessonChecks(state, questions);
     return `<div class="page-heading"><div>
       <p class="eyebrow">${subjectName(session.subject)}${diagnostic ? '' : ` · ${modeLabel(session.mode, byId.get(session.questionIds[0]))}`}</p>
-      <h1>${t(diagnostic ? 'diagnosticFinished' : 'complete')}</h1>
+      <h1>${pilotStage ? text(pilotStage.label) : t(diagnostic ? 'diagnosticFinished' : 'complete')}</h1>
     </div></div>
     <div class="practice-layout">
       <section class="panel result-panel">
-        <div class="result-score">${Math.round(session.correct / session.questionIds.length * 100)}<small>%</small></div>
+        ${pilotStage?.id === 'lesson' ? `<p>${t('pilotDone')}</p>` : `<div class="result-score">${Math.round(session.correct / session.questionIds.length * 100)}<small>%</small></div>
         <span class="section-note">${t('roundAccuracy')}</span>
-        <p>${t('resultSub', { correct: session.correct, total: session.questionIds.length })}</p>
+        <p>${t(pilotStage?.evidence === 'independent' ? 'pilotIndependent' : 'resultSub', { correct: session.correct, total: session.questionIds.length })}</p>`}
         <div class="result-buttons">
+          ${pilotStage ? `${button(t('pilotGoPath'), 'pilot-path', '', `data-subject="${session.subject}"`)}
+            <a class="button secondary" href="#report">${t('report')}</a>` : `
           ${placement ? button(t('recommendedSet'), 'recommended-set', '', `data-subject="${session.subject}"`)
             : !Learning.latestPlacement(state, session.subject) && byId.get(session.questionIds[0])?.purpose === 'starter'
               ? button(t('findStart', { n: Learning.diagnosticIds(session.subject).length }), 'diagnostic', '', `data-subject="${session.subject}"`) : ''}
           ${button(t('newPractice'), 'subject', placement ? 'secondary' : '', `data-subject="${session.subject}"`)}
           ${wrong.length ? button(t('reviewWrong'), 'review-result', 'secondary', `data-session="${escapeHtml(session.id)}"`) : button(t('records'), 'records', 'secondary')}
+          `}
         </div>
       </section>
       ${renderPlacementResult(placement)}
@@ -1086,7 +1114,7 @@
           <span class="result-status" aria-hidden="true">${attempt.correct ? '✓' : '×'}</span>
           <details>
             <summary><span class="sr-only">${t(attempt.correct ? 'correct' : 'incorrect')} </span>${text(question.prompt)}</summary>
-            ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : !attempt.correct && Core.schedulesLessonCheck(question) ? study.renderClue(question, attempt, nextDay) : ''}
+            ${question.retired ? `<p class="field-help">${t('archivedQuestion')}</p>` : !pilotStage && !attempt.correct && Core.schedulesLessonCheck(question) ? study.renderClue(question, attempt, nextDay) : ''}
             ${renderAnswerDetails(question, attempt)}
             ${question.retired ? '' : study.renderQuestionReport(question, state.flags.find(flag => flag.questionId === id))}
           </details>
@@ -1116,6 +1144,7 @@
     if (previousId && !await confirmAction('replaceTitle', 'replaceText', 'continue')) return;
     commit(current => {
       if (current.active?.id !== previousId) throw new Error('The active practice changed');
+      if (options.pilotStage) return Pilot.start(current, questions, Pilot.routes[options.subject], options.pilotStage);
       if (options.lessonCheck && !Coach.lessonChecks(current, questions).some(task =>
         task.focus === options.focus && task.ready && task.id === options.ids[0])) throw new Error('The next-day check changed');
       if (options.sample) return Core.startAlgebraSample(current, bank, options.level, options.format);
@@ -1477,6 +1506,21 @@
         render();
         main.querySelector(`[data-action="roadmap-subject"][data-subject="${roadmapSubject}"]`)?.focus();
       }
+      if (action === 'pilot-path' && Object.hasOwn(Pilot.routes, target.dataset.subject)) {
+        roadmapSubject = target.dataset.subject;
+        if (location.hash === '#plan/pilot') {
+          render();
+          document.getElementById('pilot-title')?.focus();
+        } else go('plan/pilot');
+      }
+      if (action === 'pilot-start' && Object.hasOwn(Pilot.routes, target.dataset.subject)) {
+        const subject = target.dataset.subject;
+        const row = Pilot.progress(state, Pilot.routes[subject]).find(item => item.stage.id === target.dataset.stage);
+        if (!row?.ready) { render(); return; }
+        roadmapSubject = subject;
+        if (Pilot.sessionStage(state.active) === row.stage) showActivePractice();
+        else await begin({ subject, pilotStage: row.stage });
+      }
       if (action === 'report-window' && Coach.reportWindows.includes(Number(target.dataset.days))) {
         reportDays = Number(target.dataset.days);
         render();
@@ -1609,7 +1653,8 @@
       forceSetup = false;
     }
     render();
-    const checks = location.hash === '#plan/checks' && document.getElementById('lesson-checks-title');
+    const section = { '#plan/checks': 'lesson-checks-title', '#plan/pilot': 'pilot-title' }[location.hash];
+    const checks = section && document.getElementById(section);
     if (checks) { checks.focus(); return; }
     window.scrollTo(0, 0);
     main.focus();
@@ -1639,7 +1684,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.27';
+    script.src = 'tests.js?v=2.28';
     document.body.appendChild(script);
   }
 })();

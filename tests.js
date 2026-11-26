@@ -1169,17 +1169,126 @@
       click(`[data-action="roadmap-subject"][data-subject="${id}"]`);
       const route = globalThis.EachVeyaPilot.routes[id];
       const panel = element('#pilot-path');
-      panel.open = true;
-      assert(panel.querySelector('summary').textContent.includes(topics[route.topic].zh), id);
+      assert(panel.querySelector('h3').textContent.includes(topics[route.topic].zh), id);
       assert(panel.textContent.includes('已通过 DeepSeek 复核和程序核对'), id);
-      assert(panel.textContent.includes('试学入口暂未开放'), id);
-      equal([...panel.querySelectorAll('ol:last-child li')].map(node => node.textContent),
+      equal([...panel.querySelectorAll('[data-pilot-stage] strong')].map(node => node.textContent),
         ['起点测评', '分步讲解', '专项练习', '隔天复测', '第 7 天复测']);
-      assert(!panel.querySelector('button, a'), id);
+      equal([...panel.querySelectorAll('[data-action="pilot-start"]')].map(node => node.dataset.stage), ['entry']);
     }
     change('language', 'en');
     assert(element('#pilot-path').textContent.includes('Day 7 check'));
     assert(element('#pilot-path').textContent.includes('DeepSeek review and automated answer checks are complete'));
+    fitsViewport();
+    await resetUi();
+  });
+
+  await test('五科试点验证题独立登记，跨午夜开放，新题不同并可从备份恢复', () => {
+    const Pilot = globalThis.EachVeyaPilot;
+    const local = (day, hour = 10, minute = 0) => new Date(2026, 3, day, hour, minute);
+    const response = (q, wrong) => q.fields
+      ? q.fields.map((f, i) => String(f.expected + Number(wrong && i === 0)))
+      : (q.answer + Number(wrong)) % q.options.length;
+    const finish = (state, at, wrong = false) => {
+      while (state.active) {
+        const q = byId.get(state.active.questionIds[state.active.index]);
+        equal(Core.revealHint(state, questions), state);
+        if (!Object.hasOwn(state.active.answers, q.id)) state = Core.gradeAnswer(state, questions, response(q, wrong), at.toISOString());
+        state = Core.advanceSession(state, questions, at.toISOString());
+      }
+      return state;
+    };
+    for (const path of Object.values(Pilot.routes)) {
+      const [entry, example, practice, nextDay, week] = path.stages;
+      const startStage = (state, stage, at) => Pilot.start(state, questions, path, stage, at);
+      let state = Core.createState();
+      const reserved = entry.items[0].questionId;
+      throws(() => Core.startSession(state, questions, { subject: path.subject, ids: [reserved], count: 1 }));
+      throws(() => startStage(state, practice, local(2)));
+      state = startStage(state, entry, local(2));
+      state = Core.gradeAnswer(state, questions, response(byId.get(reserved), true), local(2).toISOString());
+      const sessionId = state.active.id;
+      const reopened = startStage(Backup.parse(Backup.serialize({ ...state, active: null }), questions), entry, local(2));
+      equal(reopened.active.id, sessionId);
+      equal(reopened.active.answers, state.active.answers);
+      state = finish(reopened, local(2));
+      state = finish(startStage(state, example, local(2)), local(2));
+      state = finish(startStage(state, practice, local(2, 23, 59)), local(2, 23, 59));
+      const before = Pilot.progress(state, path, local(2, 23, 59));
+      equal(before[3].due, '2026-04-03');
+      assert(!before[3].ready && !before[4].ready);
+      throws(() => startStage(state, nextDay, local(2, 23, 59)));
+      throws(() => startStage(state, week, local(9)));
+      const late = finish(startStage(state, nextDay, local(12)), local(12));
+      equal(Pilot.progress(late, path, local(12))[4].due, '2026-04-13');
+      state = finish(startStage(state, nextDay, local(3, 0)), local(3, 0));
+      assert(!Pilot.progress(state, path, local(8, 23, 59))[4].ready);
+      state = finish(startStage(state, week, local(9, 0)), local(9, 0));
+      const rows = Pilot.progress(Backup.parse(Backup.serialize(state), questions), path, local(9));
+      equal(rows.map(row => row.session.correct), [0, 1, 2, 1, 1]);
+      equal(new Set(state.attempts.map(row => row.questionId)).size, 6);
+      equal(Core.reportableAttempts(state), []);
+      assert(rows.every(row => !row.ready));
+      throws(() => startStage(state, entry, local(9)));
+    }
+  });
+
+  await test('试点网页从起点错步走到隔天及第七天复测，报告显示真实作答', async () => {
+    const Pilot = globalThis.EachVeyaPilot;
+    const path = Pilot.routes.math;
+    const [entry, example, practice, nextDay] = path.stages;
+    const back = '[data-action="pilot-path"][data-subject="math"]';
+    const stage = id => `#pilot-path [data-stage="${id}"]`;
+    await resetUi();
+    await go('plan', '#pilot-path');
+    click('[data-action="roadmap-subject"][data-subject="math"]');
+    click(stage('entry'));
+    await waitElement('#numeric-1');
+    assert(!document.querySelector('[data-action="hint"], .worked-example'));
+    byId.get(entry.items[0].questionId).fields.forEach((field, i) => {
+      element('#numeric-' + i).value = String(field.expected + Number(i === 1));
+    });
+    click('button[form="numeric-answer-form"]');
+    assert(!document.querySelector('.answer-line, .numeric-mark'));
+    await finishQuestions(() => false);
+    click(back);
+    await waitElement(stage('lesson'));
+    click(stage('lesson'));
+    await waitElement('.worked-example');
+    assert(element('.worked-example').textContent.includes('第一步正确'));
+    await finishQuestions(() => true);
+    assert(!document.querySelector('.result-score'));
+    click(back);
+    await waitElement(stage('practice'));
+    click(stage('practice'));
+    await waitElement('#numeric-1');
+    await finishQuestions(() => true);
+    click(back);
+    await waitElement('[data-pilot-stage="next-day"]');
+    assert(!document.querySelector(stage('next-day')));
+
+    function past(day) {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate() - day, 12);
+    }
+    let saved = Core.createState();
+    for (const [step, at] of [[entry, past(7)], [example, past(7)], [practice, past(7)], [nextDay, past(6)]]) {
+      saved = Pilot.start(saved, questions, path, step, at);
+      while (saved.active) {
+        const q = byId.get(saved.active.questionIds[saved.active.index]);
+        const response = q.fields.map(field => String(field.expected));
+        saved = Core.advanceSession(Core.gradeAnswer(saved, questions, response, at.toISOString()), questions, at.toISOString());
+      }
+    }
+    Core.saveState(localStorage, key, saved);
+    replayStorage(key);
+    click(stage('day-seven'));
+    await waitElement('#numeric-1');
+    assert(!document.querySelector('[data-action="hint"], .worked-example'));
+    await finishQuestions(() => true);
+    await go('report', '#pilot-report-title');
+    equal([...element('[data-pilot-report="math"]').querySelectorAll('li strong')].map(node => node.textContent),
+      ['起点测评', '隔天复测', '第 7 天复测']);
+    assert([...element('[data-pilot-report="math"]').querySelectorAll('li')].every(node => node.textContent.includes('独立答对 1/1 题')));
     fitsViewport();
     await resetUi();
   });
