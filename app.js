@@ -28,7 +28,7 @@
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && workshopSubjects.has(id)));
   if (!completeBank || !completeWorkshops || QuestionVersions?.version !== 3
-    || Core?.VERSION !== 8 || !Core?.fieldInputLimit || !Core?.readingPassage || !Coach?.lessonChecks || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
+    || Core?.VERSION !== 8 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -1567,7 +1567,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.20';
+    script.src = 'tests.js?v=2.21';
     document.body.appendChild(script);
   }
 })();

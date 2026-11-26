@@ -34,6 +34,8 @@
     lessonReady: ['新题已可以做', 'Your new question is ready'],
     lessonUnavailable: ['这个专项暂时没有未做过的新题。', 'There are no unseen check questions left for this workshop.'],
     lessonPassed: ['本次新题答对了。', 'You answered this new question correctly.'],
+    lessonIndependent: ['这道跨日新题已独立答对。', 'You answered this fresh next-day question correctly without hints.'],
+    lessonNotCounted: ['作答已保存。这道题未计入跨日独立复测。', 'Your answer was saved. It does not count as an independent next-day check.'],
     lessonHinted: ['这次用了提示。隔天可以独立做一道新题。', 'You used a hint. Try another new question on your own the next day.'],
     lessonRetry: ['先看这一步的提示，隔天再用一道新题试试。', 'Review the hint for this step and try another new question the next day.'],
     lessonOpen: ['查看跨日复测', 'View next-day checks'],
@@ -56,6 +58,8 @@
     coachUntested: ['尚未测评', 'Not yet assessed'],
     coachPossible: ['有待确认', 'Needs checking'],
     coachConfirmed: ['两道新题出现同类错误，建议先补练这一步。', 'The same error appeared on two new questions. Practise this step first.'],
+    coachEquationEvidence: ['同一步出错的方程结构：{n} 种。达到 2 种才建议优先补练。', 'This step was missed in {n} equation structures. Two are needed before we prioritise it for practice.'],
+    coachEquationConfirmed: ['两种不同写法的新方程里，同一步出错。建议先补练这一步。', 'The same step was missed in two fresh equation structures. Practise this step first.'],
     coachVerified: ['最近一次新题检验通过，继续按计划复习。', 'The latest check on new questions passed. Continue with scheduled review.'],
     coachScheduled: ['已记录初练表现，等待跨日复测。', 'Practice evidence is recorded. A later-day check is pending.'],
     scienceErrorClue: ['此选项可能涉及「{kind}」。做两道新题再确认。', 'This option may involve “{kind}”. Try two new items to check.'],
@@ -108,6 +112,8 @@
     reportMistakes: ['常见错因线索', 'Common mistake patterns'],
     reportChecks: ['跨日复测表现', 'Next-day check results'],
     reportCheckStat: ['独立答对 {independent}/{total} 次 · 最近 {date}', '{independent}/{total} checks correct without hints · Latest {date}'],
+    reportLastIndependent: ['最近一题已独立答对。', 'Most recent question: correct without hints.'],
+    reportLastNeedsPractice: ['最近一题未独立答对。', 'Most recent question: no independent correct answer.'],
     reportMistakeCount: ['{attempts} 次线索，来自 {distinct} 道不同题', '{attempts} clues across {distinct} distinct questions'],
     reportMistakeKind: ['{kind} · {n} 次', '{kind} · {n} times'],
     reportNext: ['下一步', 'Suggested next step'], reportNextTopic: ['试练「{topic}」', 'Try “{topic}”'],
@@ -133,6 +139,7 @@
       unassessed: 'coachUntested', possible: 'coachPossible', confirmed: 'coachConfirmed', verified: 'coachVerified', scheduled: 'coachScheduled'
     };
     const coachUrl = id => '#coach/' + id;
+    const statusKey = record => record.equationLevel && record.status === 'confirmed' ? 'coachEquationConfirmed' : sectionStatus[record.status];
 
     function linkToCoach(id, label, extra = '') {
       return `<a class="button secondary ${extra}" href="${coachUrl(id)}">${label || text(skills[id].label)}</a>`;
@@ -176,7 +183,7 @@
       if (!Object.hasOwn(skills, focus)) {
         return `${heading(t('coach'), t('coachIntro'))}<section class="panel study-panel"><p>${t('coachBasis')}</p>
           <ul class="study-skill-list">${Object.keys(skills).map(id => `<li><a href="${coachUrl(id)}">${text(skills[id].label)}</a>
-            <span class="section-note">${subjectName(skills[id].subject)} · ${t(sectionStatus[profile[id].status])}</span></li>`).join('')}</ul></section>`;
+            <span class="section-note">${subjectName(skills[id].subject)} · ${t(statusKey(profile[id]))}</span></li>`).join('')}</ul></section>`;
       }
       const skill = skills[focus];
       const record = profile[focus];
@@ -196,7 +203,8 @@
               : skill.prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><div class="study-actions">${skill.prerequisites.map(id => linkToCoach(id)).join('')}</div>` : ''}
           </section>
           <section class="panel study-panel" aria-labelledby="skill-check-title">
-            <h2 id="skill-check-title">${t(sectionStatus[record.status])}</h2>
+            <h2 id="skill-check-title">${t(statusKey(record))}</h2>
+            ${record.equationLevel ? `<p>${t('coachEquationEvidence', { n: record.equationEvidence })}</p>` : ''}
             ${record.lastCheck ? `<p>${t('coachCheckSummary', record.lastCheck)}</p>` : ''}
             ${record.due ? `<p class="section-note">${record.due <= Core.localDate(new Date()) ? t('coachDueNow') : t('coachDue', { date: formatDate(record.due) })}</p>` : ''}
             <div class="study-actions">${ready.map(mode => button(t(mode), 'focus-practice', mode === ready[0] ? '' : 'secondary', `data-mode="${mode}" data-focus="${focus}"`)).join('')}</div>
@@ -212,15 +220,16 @@
         const tasks = Coach.lessonChecks(state, catalog);
         const task = tasks.find(item => item.focus === session.focus);
         const answer = state.attempts.find(attempt => attempt.sessionId === session.id && attempt.questionId === checkQuestion.id);
+        const result = Coach.lessonCheckResult(state, catalog, session);
         return `<section class="panel study-panel focus-result"><h2>${t('lessonCheck')}</h2>
           ${answer && !answer.correct ? renderClue(checkQuestion, answer, tasks) : ''}
-          <p>${t(session.correct && answer?.hinted === false ? 'lessonPassed'
+          <p>${t(!result ? 'lessonNotCounted' : result.independent ? result.equation ? 'lessonIndependent' : 'lessonPassed'
             : task?.id ? session.correct ? 'lessonHinted' : 'lessonRetry' : 'lessonUnavailable')}</p>
           <a href="#plan/checks">${t('lessonOpen')}</a></section>`;
       }
       const record = Coach.assessment(state, catalog, new Date(session.completedAt))[session.focus];
       return `<section class="panel study-panel focus-result"><h2>${text(skills[session.focus].label)}</h2>
-        <p>${t(sectionStatus[record.status])}</p>${record.lastCheck ? `<p>${t('coachCheckSummary', record.lastCheck)}</p>` : ''}
+        <p>${t(statusKey(record))}</p>${record.lastCheck ? `<p>${t('coachCheckSummary', record.lastCheck)}</p>` : ''}
         ${record.interval ? `<p>${t('coachDue', { date: formatDate(record.due) })}</p>` : ''}
         ${linkToCoach(session.focus, t('coachJump'))}</section>`;
     }
@@ -395,7 +404,8 @@
         ${report.checks.length ? `<section class="panel study-panel report-checks"><h2>${t('reportChecks')}</h2>
           <ul class="study-skill-list">${report.checks.map(row => `<li><span class="section-note">${subjectName(skills[row.focus].subject)}</span>
             <a href="${coachUrl(row.focus)}">${text(skills[row.focus].label)}</a>
-            <span class="field-help">${t('reportCheckStat', { ...row, date: formatDate(row.last) })}</span></li>`).join('')}</ul></section>` : ''}
+            <span class="field-help">${t('reportCheckStat', { ...row, date: formatDate(row.last) })}</span>
+            ${typeof row.lastIndependent === 'boolean' ? `<span class="field-help">${t(row.lastIndependent ? 'reportLastIndependent' : 'reportLastNeedsPractice')}</span>` : ''}</li>`).join('')}</ul></section>` : ''}
         <section class="panel study-panel report-map"><h2>${t('reportMap')}</h2><p class="field-help">${t('reportSkillNote')}</p>
           <div class="study-grid">${Object.entries(topicsBySubject).map(([subject, ids]) => `<section><h3>${subjectName(subject)}</h3><ul class="study-skill-list">${ids.map(id => {
             const row = report.topics[id];

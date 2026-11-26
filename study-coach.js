@@ -33,6 +33,8 @@
     const checks = new Map();
     const scienceIndependent = new Map();
     const lessonContexts = new Map();
+    const seenEquations = new Set();
+    const equationErrors = { balance: new Set(), coefficient: new Set() };
     const events = attempts.map(attempt => ({ time: Date.parse(attempt.at), attempt }));
     for (const session of state.sessions.filter(session => session.focus && Core.focusModes.includes(session.mode))) {
       const time = Date.parse(session.completedAt);
@@ -54,6 +56,18 @@
         const marks = attempt.focus ? [attempt.focus] : question.focus || [];
         if (fresh) for (const focus of marks) entries[focus].seen++;
         const likely = mistakeFocus(question, attempt);
+        const shape = Core.equationStructure(question);
+        const equation = Core.equationKey(question);
+        const freshEquation = Boolean(equation && !seenEquations.has(equation));
+        if (equation) seenEquations.add(equation);
+        if (shape && equationErrors[likely] && ['practice', 'ai', 'probe', 'retake'].includes(attempt.mode)) {
+          const entry = entries[likely];
+          entry.equationLevel = question.level;
+          if (freshEquation && fresh && attempt.hinted === false) equationErrors[likely].add(shape);
+          entry.equationEvidence = equationErrors[likely].size;
+          entry.status = entry.equationEvidence >= 2 ? 'confirmed' : 'possible';
+          entry.lastQuestion = question.id;
+        }
         if (fresh && freshPassage && question.purpose === 'lesson' && attempt.mode === 'practice' && attempt.correct && attempt.hinted === false) {
           for (const focus of marks) {
             const contexts = lessonContexts.get(focus) || new Set();
@@ -98,8 +112,9 @@
         }
         if (attempt.focus) {
           const rows = checks.get(attempt.sessionId) || [];
-          rows.push({ fresh, correct: attempt.correct, independent: attempt.hinted === false, likely,
-            error: question.errorKinds?.[attempt.choice] || likely, level: question.level });
+          rows.push({ fresh: fresh && (!shape || freshEquation), correct: attempt.correct, independent: attempt.hinted === false, likely,
+            error: question.errorKinds?.[attempt.choice] || likely, level: question.level,
+            equationCheck: question.purpose === 'equation-check', shape });
           checks.set(attempt.sessionId, rows);
         }
         continue;
@@ -110,6 +125,16 @@
       if (rows.length !== session.questionIds.length) continue;
       const independent = rows.filter(row => row.fresh && row.independent && row.correct).length;
       const signals = rows.filter(row => row.fresh && !row.correct && row.likely === session.focus).map(row => row.error);
+      if (rows.every(row => row.equationCheck)) {
+        const verified = independent === rows.length && new Set(rows.map(row => row.shape)).size >= 2;
+        entry.lastCheck = { day, answered: rows.length, independent, verified, mode: session.mode };
+        if (verified) {
+          equationErrors[session.focus].clear();
+          entry.equationEvidence = 0;
+          entry.status = 'verified';
+        }
+        continue;
+      }
       const repeatedSignal = Math.max(0, ...signals.map(kind => signals.filter(signal => signal === kind).length));
       const wrong = rows.filter(row => !row.correct).length;
       const verified = independent === rows.length && (session.mode === 'spaced' ? rows.length >= 1 : rows.length >= 2);
@@ -136,6 +161,14 @@
   function focusIds(state, focus, mode, count = mode === 'spaced' ? 1 : 2, record) {
     if (!Object.hasOwn(skills, focus) || !Core.focusModes.includes(mode)) return [];
     const used = new Set(state.attempts.map(attempt => attempt.questionId));
+    if (record?.equationLevel && (mode === 'probe' || mode === 'retake')) {
+      const equations = new Set(Core.questionsForState(questions, state).filter(q => used.has(q.id)).map(Core.equationKey).filter(Boolean));
+      const available = questions.filter(q => !q.retired && q.purpose === 'equation-check' && q.level === record.equationLevel
+        && q.focus.includes(focus) && !used.has(q.id) && !equations.has(Core.equationKey(q)));
+      const unique = new Map();
+      for (const q of available) if (!unique.has(Core.equationStructure(q))) unique.set(Core.equationStructure(q), q.id);
+      return unique.size >= count ? [...unique.values()].slice(0, count) : [];
+    }
     if (mode === 'spaced' && record?.lessonLevel) {
       const usedPassages = new Set(state.attempts.map(attempt => Core.readingPassage(questionsById.get(attempt.questionId))).filter(Boolean));
       const reserved = questions.filter(q => !q.retired && q.purpose === 'transfer' && q.level === record.lessonLevel && q.focus.includes(focus)
@@ -178,10 +211,18 @@
 
   const mistakeFocus = Core.mistakeFocus;
 
+  function isFollowupFor(question, source, focus) {
+    return Boolean(question && !question.retired && question.purpose === 'followup' && question.level === source.level
+      && question.subject === source.subject && question.topic === source.topic && question.focus.includes(focus)
+      && question.lessonGroup !== source.lessonGroup
+      && (!Core.equationStructure(source) || (Core.equationStructure(question) && Core.equationKey(question) !== Core.equationKey(source))));
+  }
+
   function lessonHistory(state, byId, now) {
     const pending = new Map();
     const used = new Set();
     const read = new Set();
+    const equations = new Set();
     const results = [];
     const completed = new Map(state.sessions.map(session => [session.id, session.completedAt]));
     const attempts = Core.reportableAttempts(state).map(attempt => {
@@ -197,19 +238,20 @@
     for (const { attempt, question, check, submitted, time } of attempts) {
       const date = new Date(time);
       const passage = Core.readingPassage(question);
-      const fresh = !used.has(attempt.questionId) && (!passage || !read.has(passage));
+      const equation = Core.equationKey(question);
+      const fresh = !used.has(attempt.questionId) && (!passage || !read.has(passage)) && (!equation || !equations.has(equation));
       used.add(attempt.questionId);
       if (passage) read.add(passage);
-      if (Core.schedulesLessonCheck(question) && !question.retired && !attempt.correct) {
+      if (equation) equations.add(equation);
+      if (Core.schedulesLessonCheck(question) && !question.retired && !attempt.correct
+        && (!equation || ['practice', 'ai', 'probe', 'retake'].includes(attempt.mode))) {
         const focus = mistakeFocus(question, attempt);
         if (focus) schedule(focus, question, date);
       } else if (check && fresh) {
         const task = pending.get(attempt.focus);
-        if (!task || task.due > dayAt(new Date(submitted)) || question.level !== task.source.level
-          || question.subject !== task.source.subject || question.lessonGroup === task.source.lessonGroup
-          || !question.focus.includes(attempt.focus)) continue;
+        if (!task || task.due > dayAt(new Date(submitted)) || !isFollowupFor(question, task.source, attempt.focus)) continue;
         const independent = attempt.correct && attempt.hinted === false;
-        results.push({ focus: attempt.focus, date: dayAt(date), independent });
+        results.push({ focus: attempt.focus, date: dayAt(date), independent, sessionId: attempt.sessionId, equation: Boolean(equation) });
         pending.delete(attempt.focus);
         if (!independent) {
           schedule(attempt.focus, question, date);
@@ -218,12 +260,12 @@
         }
       }
     }
-    return { pending, used, read, results };
+    return { pending, used, read, equations, results };
   }
 
   function lessonChecks(state, catalog, now = new Date()) {
     const byId = new Map(catalog.map(question => [question.id, question]));
-    const { pending, used, read } = lessonHistory(state, byId, now);
+    const { pending, used, read, equations } = lessonHistory(state, byId, now);
     const today = dayAt(now);
     // A submitted but unfinished check may be resumed. Its question cannot be assigned to a second skill.
     for (const attempt of state.attempts) {
@@ -231,15 +273,16 @@
       used.add(attempt.questionId);
       const passage = Core.readingPassage(byId.get(attempt.questionId));
       if (passage) read.add(passage);
+      const equation = Core.equationKey(byId.get(attempt.questionId));
+      if (equation) equations.add(equation);
     }
     const active = state.active;
     const activeQuestion = active?.mode === 'spaced' ? byId.get(active.questionIds[0]) : null;
     if (activeQuestion?.purpose === 'followup') used.add(activeQuestion.id);
     return [...pending.values()].sort((a, b) => a.due.localeCompare(b.due)).map(({ focus, due, source }) => {
-      const resume = activeQuestion?.purpose === 'followup' && active.focus === focus;
-      const candidates = catalog.filter(q => !q.retired && q.purpose === 'followup' && q.level === source.level
-        && q.subject === source.subject && q.focus.includes(focus) && !used.has(q.id) && !read.has(Core.readingPassage(q))
-        && (!source.lessonGroup || q.lessonGroup !== source.lessonGroup));
+      const resume = due <= today && active?.focus === focus && isFollowupFor(activeQuestion, source, focus);
+      const candidates = catalog.filter(q => isFollowupFor(q, source, focus) && !used.has(q.id)
+        && !read.has(Core.readingPassage(q)) && !equations.has(Core.equationKey(q)));
       const matches = candidates.filter(q => source.stepMethod ? q.stepMethod === source.stepMethod
         : source.evidenceType ? q.evidenceType === source.evidenceType
         : source.equationStep && q.equationStep && Math.sign(q.equationStep.offset) === Math.sign(source.equationStep.offset));
@@ -248,6 +291,11 @@
       if (id && due <= today) used.add(id);
       return { focus, due, id, ready: Boolean(id && due <= today), resume };
     });
+  }
+
+  function lessonCheckResult(state, catalog, session) {
+    return lessonHistory(state, new Map(catalog.map(question => [question.id, question])), new Date(session.completedAt))
+      .results.find(result => result.sessionId === session.id);
   }
 
   function prerequisiteTrail(focus, profile) {
@@ -367,10 +415,11 @@
       daily.push({ date, end: dayAt(now, end), ...counts(period) });
     }
     const checks = new Map();
-    for (const { focus, date, independent } of lessonHistory(state, byId, now).results) {
+    for (const { focus, date, independent, equation } of lessonHistory(state, byId, now).results) {
       if (date < start) continue;
       const row = checks.get(focus) || { focus, total: 0, independent: 0 };
-      checks.set(focus, { ...row, last: date, total: row.total + 1, independent: row.independent + Number(independent) });
+      checks.set(focus, { ...row, last: date, total: row.total + 1, independent: row.independent + Number(independent),
+        ...(equation ? { lastIndependent: independent } : {}) });
     }
     return {
       recent: counts(recent), previous: counts(previous), topics, daily, checks: [...checks.values()].sort((a, b) => b.last.localeCompare(a.last)),
@@ -466,5 +515,5 @@
       unavailableReview: dueTasks.filter(task => !task.ready).map(task => task.focus), slots, usedSeconds, pace, deadlineSoon };
   }
 
-  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, lessonChecks, dueSkills, report, reportWindows, learningPlan, roadmap, prerequisiteTrail, intervals };
+  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, lessonChecks, lessonCheckResult, dueSkills, report, reportWindows, learningPlan, roadmap, prerequisiteTrail, intervals };
 })();

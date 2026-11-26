@@ -52,6 +52,14 @@
   equation('water-tank', 0, -4, 36, 5, bi('水箱原有 36 升水，取了 4 次，每次取 x 升，还剩 16 升。',
     'A tank starts with 36 litres of water. Four draws of x litres each leave 16 litres.'), 'followup', 'constant-first');
 
+  // Fresh L2 probes use the same two steps as the workshop, in three written forms.
+  for (const [group, a, b, x, presentation] of [
+    ['probe-standard', 3, 8, 9, ''], ['probe-reversed', 7, -3, 6, 'sides-swapped'],
+    ['probe-constant', -5, 52, 7, 'constant-first'],
+    ['retake-standard', 5, 7, 6, ''], ['retake-reversed', 8, -7, 6, 'sides-swapped'],
+    ['retake-constant', -6, 75, 9, 'constant-first']
+  ]) equation(group, 0, a, b, x, bi('按顺序填出两步。', 'Complete both steps in order.'), 'equation-check', presentation);
+
   function evidence(group, index, passage, ask, answer, explanation, purpose = 'lesson') {
     const sentences = passage.match(/[^.!?]+[.!?]/g)?.map(s => s.trim());
     if (sentences?.length !== 4 || sentences.join(' ') !== passage || !sentences[answer]) throw new Error('Invalid reading passage ' + group);

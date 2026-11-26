@@ -1577,7 +1577,14 @@
         contextsForChecks.add(q.lessonGroup);
       }
       if (subject === 'english') equal(new Set(followups.map(q => q.evidenceType)).size, 5);
-      for (const q of [...lesson, ...transfer, ...followups]) {
+      const equationChecks = questions.filter(q => q.subject === subject && q.purpose === 'equation-check');
+      if (subject === 'math') {
+        equal(equationChecks.length, 6);
+        assert(equationChecks.every(q => q.focusOnly && q.level === 'L2'));
+        equal(new Set(equationChecks.map(Core.equationKey)).size, 6);
+        equal(new Set(equationChecks.map(Core.equationStructure)).size, 3);
+      }
+      for (const q of [...lesson, ...transfer, ...followups, ...equationChecks]) {
         if (subject === 'math') {
           for (const lang of ['zh', 'en']) {
             const line = q.prompt[lang].split('\n').at(-1);
@@ -1616,6 +1623,108 @@
         }
       }
     }
+  });
+
+  await test('数学两步题按不同结构确认错因，重复题和带提示作答只留下线索', () => {
+    const get = state => Coach.assessment(state, questions, new Date(laterTime));
+    function miss(state, id, step, hinted = false) {
+      const q = byId.get(id);
+      let run = start({ ids: [id], count: 1 }, state);
+      if (hinted) run = Core.revealHint(run, questions);
+      const response = q.fields.map((field, index) => String(field.expected + Number(index === step)));
+      return Core.advanceSession(Core.gradeAnswer(run, questions, response, knownTime), questions, knownTime);
+    }
+    const standard = 'lesson-equation-tickets-0';
+    let state = miss(Core.createState(), standard, 0);
+    equal([get(state).balance.status, get(state).balance.equationEvidence], ['possible', 1]);
+    state = miss(state, standard, 0);
+    state = miss(state, 'lesson-equation-tickets-1', 0);
+    state = miss(state, 'lesson-equation-probe-reversed-0', 0, true);
+    equal([get(state).balance.status, get(state).balance.equationEvidence], ['possible', 1]);
+    state = miss(state, 'lesson-equation-probe-constant-0', 1);
+    equal([get(state).coefficient.status, get(state).coefficient.equationEvidence], ['possible', 1]);
+    const ids = Coach.focusIds(state, 'balance', 'probe', 2, get(state).balance);
+    equal(new Set(ids.map(id => Core.equationStructure(byId.get(id)))).size, 2);
+    let probe = start({ ids, count: 2, mode: 'probe', focus: 'balance' }, state);
+    for (const id of ids) {
+      probe = Core.gradeAnswer(probe, questions, byId.get(id).fields.map((f, i) => String(f.expected + Number(i === 0))), knownTime);
+      if (id === ids.at(-1)) equal(get(probe).balance.status, 'possible');
+      probe = Core.advanceSession(probe, questions, knownTime);
+    }
+    const restored = Backup.parse(Backup.serialize(probe), questions);
+    equal([get(restored).balance.status, get(restored).balance.equationEvidence], ['confirmed', 2]);
+    const repair = Coach.focusIds(restored, 'balance', 'retake', 2, get(restored).balance);
+    assert(repair.length === 2 && repair.every(id => !ids.includes(id)));
+    let retake = start({ ids: repair, count: 2, mode: 'retake', focus: 'balance' }, restored);
+    for (const id of repair) retake = Core.advanceSession(Core.gradeAnswer(retake, questions,
+      byId.get(id).fields.map(f => String(f.expected)), knownTime), questions, knownTime);
+    equal([get(retake).balance.status, get(retake).balance.equationEvidence], ['verified', 0]);
+    assert(Coach.lessonChecks(retake, questions, new Date(laterTime)).some(task => task.focus === 'balance' && task.ready));
+    equal(Coach.report(retake, questions, 7, new Date(laterTime)).checks, []);
+  });
+
+  await test('数学 L2 已验算 AI 分步错题可预约隔日复测，同式改写不会重复计入', () => {
+    const q = byId.get('lesson-equation-tickets-0');
+    const alternate = {
+      ...q, id: 'test-same-equation', equationPresentation: 'sides-swapped',
+      prompt: { en: '17 = 3x + 2', zh: '17 = 3x + 2' }
+    };
+    const probe = Core.createState();
+    const catalog = [...questions, alternate];
+    let state = Core.startSession(probe, catalog, { subject: 'math', ids: [q.id, alternate.id], count: 2 });
+    for (const ignored of state.active.questionIds) {
+      state = Core.advanceSession(Core.gradeAnswer(state, catalog, ['16', '5'], knownTime), catalog, knownTime);
+    }
+    equal(Core.equationKey(q), Core.equationKey(alternate));
+    equal(Coach.assessment(state, catalog, new Date(laterTime)).balance.equationEvidence, 1);
+
+    let ai = Core.startAiSession(probe, questions, 'L2', aiFixture, 'calculation');
+    const withAi = Core.questionsForState(questions, ai);
+    const question = withAi.find(item => item.id === ai.active.questionIds[0]);
+    ai = Core.gradeAnswer(ai, withAi, question.fields.map((f, i) => String(f.expected + Number(i === 1))), knownTime);
+    equal(Coach.mistakeFocus(question, ai.attempts[0]), 'coefficient');
+    const pending = Coach.lessonChecks(ai, withAi, new Date(knownTime)).find(task => task.focus === 'coefficient');
+    assert(pending.id && !pending.ready);
+    const due = Coach.lessonChecks(ai, withAi, new Date(laterTime)).find(task => task.focus === 'coefficient');
+    assert(due.ready && byId.get(due.id).level === 'L2');
+    assert(Core.equationKey(byId.get(due.id)) !== Core.equationKey(question));
+  });
+
+  await test('数学 L2 两步闭环从错题提示到两种方程确认，再做无提示跨日新题并显示最近结果', async () => {
+    await resetUi();
+    const today = new Date();
+    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 23, 59).toISOString();
+    const workshop = byId.get('lesson-equation-tickets-0');
+    let seeded = start({ ids: [workshop.id], count: 1 });
+    seeded = Core.advanceSession(Core.gradeAnswer(seeded, questions, ['16', '5'], yesterday), questions, yesterday);
+    Core.saveState(localStorage, key, seeded);
+    replayStorage(key);
+    await go('mistakes', '.mistake-clue');
+    assert(element('.mistake-clue').textContent.includes('等式两边都减'));
+    click('.mistake-clue a[href="#coach/balance"]');
+    await waitElement('[data-mode="probe"]');
+    assert(element('#skill-check-title').textContent.includes('有待确认'));
+    click('[data-mode="probe"]');
+    await waitElement('#numeric-answer-form');
+    assert(!document.querySelector('[data-action="hint"]'));
+    for (let index = 0; index < 2; index++) {
+      await answerUi(false);
+      click('[data-action="next"]');
+    }
+    await waitElement('.focus-result');
+    assert(element('.focus-result').textContent.includes('两种不同写法'));
+    await go('plan/checks', '[data-action="lesson-check"][data-focus="balance"]');
+    click('[data-action="lesson-check"][data-focus="balance"]');
+    await waitElement('#numeric-answer-form');
+    assert(current().id !== workshop.id && current().level === 'L2');
+    assert(!document.querySelector('[data-action="hint"]'));
+    await finishQuestions(() => true);
+    assert(element('.focus-result').textContent.includes('这道跨日新题已独立答对'));
+    await go('report', '.report-checks');
+    assert(element('.report-checks').textContent.includes('独立答对 1/1 次'));
+    assert(element('.report-checks').textContent.includes('最近一题已独立答对'));
+    fitsViewport();
+    await resetUi();
   });
 
   await test('化学和生物可从科目页进入专项，错因提示和隔天复测匹配原步骤', async () => {

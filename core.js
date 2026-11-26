@@ -51,7 +51,22 @@
   const responseOf = attempt => attempt.response ?? attempt.choice;
   const readingPassage = question => question?.subject === 'english' && question.topic === 'reading'
     ? question.passageId || question.originalId || question.id : '';
-  const schedulesLessonCheck = question => question?.purpose === 'lesson' || question?.readingEvidence === true;
+  function equationStructure(question) {
+    const step = question?.equationStep;
+    return question?.subject === 'math' && question.level === 'L2' && question.format === 'calculation'
+      && step && !step.grouped && step.offset !== 0 && Math.abs(step.coefficient) > 1
+      ? question.equationPresentation || 'standard' : '';
+  }
+
+  function equationKey(question) {
+    if (!equationStructure(question)) return '';
+    const { coefficient, offset, right } = question.equationStep;
+    const sign = Math.sign(coefficient);
+    return [coefficient * sign, offset * sign, right * sign].join('/');
+  }
+
+  const schedulesLessonCheck = question => question?.purpose === 'lesson' || question?.readingEvidence === true
+    || (Boolean(equationStructure(question)) && question.purpose !== 'followup' && question.purpose !== 'transfer' && !question.sample);
 
   function textAnswer(value) {
     return value.normalize('NFKC').trim().toLowerCase()
@@ -383,6 +398,7 @@
     VERSION, createState, normalizeState, readState, saveState, updatePreferences, getMistakes, getStats, questionsForState,
     shuffled, chooseQuestions, startSession, startAiSession, startAlgebraSample, revealHint, gradeAnswer, evaluateAnswer, responseOf, mistakeFocus,
     advanceSession, localDate, dailyStats,
-    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage, schedulesLessonCheck, evaluateField, fieldInputLimit
+    reportableAttempts, normalizePlan, flagQuestion, flagReasons, hasDelayedFeedback, focusModes, readingPassage,
+    equationStructure, equationKey, schedulesLessonCheck, evaluateField, fieldInputLimit
   };
 })();
