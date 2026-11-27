@@ -113,7 +113,7 @@
         }
         if (attempt.focus) {
           const rows = checks.get(attempt.sessionId) || [];
-          rows.push({ fresh: fresh && (!shape || freshEquation), correct: attempt.correct, independent: attempt.hinted === false, likely,
+          rows.push({ fresh: fresh && freshPassage && (!shape || freshEquation), correct: attempt.correct, independent: attempt.hinted === false, likely,
             error: question.errorKinds?.[attempt.choice] || likely, level: question.level,
             equationCheck: question.purpose === 'equation-check', shape });
           checks.set(attempt.sessionId, rows);
@@ -125,7 +125,7 @@
       const rows = checks.get(session.id) || [];
       if (rows.length !== session.questionIds.length) continue;
       const independent = rows.filter(row => row.fresh && row.independent && row.correct).length;
-      const signals = rows.filter(row => row.fresh && !row.correct && row.likely === session.focus).map(row => row.error);
+      const signals = rows.filter(row => row.fresh && row.independent && !row.correct && row.likely === session.focus).map(row => row.error);
       if (rows.every(row => row.equationCheck)) {
         const verified = independent === rows.length && new Set(rows.map(row => row.shape)).size >= 2;
         entry.lastCheck = { day, answered: rows.length, independent, verified, mode: session.mode };
@@ -441,6 +441,8 @@
   function learningPlan(state, catalog, now = new Date()) {
     const settings = state.plan || defaultPlan;
     const today = dayAt(now);
+    const deferred = Object.entries(settings.deferred || {}).filter(([, date]) => date > today);
+    const postponed = new Set(deferred.map(([key]) => key));
     const profile = assessment(state, catalog, now);
     const subjects = settings.goal === 'all' ? ['math', 'english', ...Science.subjects]
       : settings.goal === 'balanced' ? ['math', 'english'] : [settings.goal];
@@ -465,11 +467,12 @@
       return { focus, mode, count, ready: focusIds(state, focus, mode, count, profile[focus]).length === count };
     });
     const review = [];
-    const todayChecks = nextDay.filter(task => task.ready && !task.resume && matchesFocus(task.focus)).slice(0, slots);
+    const todayChecks = nextDay.filter(task => task.ready && !task.resume && matchesFocus(task.focus)
+      && !postponed.has('check:' + task.focus)).slice(0, slots);
     let remaining = slots - todayChecks.length;
     for (const { focus, mode, count, ready } of dueTasks) {
       if (review.length >= 2 || remaining < 1) break;
-      if (remaining < count || !ready) continue;
+      if (remaining < count || !ready || postponed.has('skill:' + focus)) continue;
       review.push({ focus, mode, count });
       remaining -= count;
     }
@@ -478,25 +481,35 @@
     const byId = new Map(catalog.map(question => [question.id, question]));
     const bankReviews = questionReviews(attempts, byId).filter(({ question }) => subjects.includes(question.subject)
       && (!settings.topic || settings.topic === question.topic));
-    const dueBank = bankReviews.filter(item => item.date <= today);
+    const dueBank = bankReviews.filter(item => item.date <= today && !postponed.has('bank:' + item.question.subject));
     const bankSubject = dueBank[0]?.question.subject;
     const bankIds = dueBank.filter(item => item.question.subject === bankSubject)
       .slice(0, Math.min(remaining, 3)).map(item => item.question.id);
     const bankReview = bankIds.length ? { subject: bankSubject, ids: bankIds, count: bankIds.length, mode: 'review' } : null;
     remaining -= bankIds.length;
     const lastByTopic = new Map();
+    const lastPracticeDay = new Map();
     const practisedSubjects = new Set();
     for (const attempt of attempts) {
       const question = byId.get(attempt.questionId);
       if (!question) continue;
       lastByTopic.set(question.topic, Date.parse(attempt.at));
       practisedSubjects.add(question.subject);
+      if (attempt.mode === 'practice') {
+        const day = dayAt(new Date(attempt.at));
+        if (day > (lastPracticeDay.get(question.topic) || '')) lastPracticeDay.set(question.topic, day);
+      }
     }
     const choices = subjects.flatMap(subject => topicsBySubject[subject].filter(topic => !settings.topic || topic === settings.topic)
       .map(topic => ({ subject, topic, practice: evidence.topics[topic].passages ?? evidence.topics[topic].distinct, priority: priorities.has(topic) ? 0 : 1,
         last: lastByTopic.get(topic) ?? -Infinity })))
       .sort((a, b) => a.priority - b.priority || a.practice - b.practice || a.last - b.last);
-    const next = choices[0];
+    const eligible = choices.filter(choice => !postponed.has('practice:' + choice.topic));
+    const returned = eligible.filter(({ topic }) => {
+      const date = settings.deferred?.['practice:' + topic];
+      return date && date <= today && date >= dayAt(now, -29) && (lastPracticeDay.get(topic) || '') < date;
+    }).sort((a, b) => settings.deferred['practice:' + a.topic].localeCompare(settings.deferred['practice:' + b.topic]));
+    const next = returned[0] || eligible[0];
     const deadlineSoon = settings.deadline && settings.deadline >= today && settings.deadline <= dayAt(now, 6);
     const practiceCount = next && remaining > 0 ? Math.min(remaining, deadlineSoon ? 4 : 6) : 0;
     const placement = next && !deadlineSoon && !Learning.latestPlacement(state, next.subject)
@@ -506,6 +519,8 @@
       subject: next.subject, topic: next.topic, count: practiceCount, format: 'all',
       level: next.subject === 'english' ? state.preferences.englishLevel || 'auto' : 'auto'
     } : null;
+    const practiceReason = !next ? '' : next === returned[0] ? 'planReasonReturned'
+      : next.priority === 0 ? 'planReasonWeak' : settings.topic ? 'planReasonGoal' : 'planReasonCoverage';
     const upcoming = Object.entries(profile).filter(([id, value]) => matchesFocus(id) && !lessonFocuses.has(id) && value.due > today && value.due <= dayAt(now, 29))
       .map(([focus, value]) => ({ focus, date: value.due }))
       .concat(nextDay.filter(task => task.id && matchesFocus(task.focus) && task.due > today && task.due <= dayAt(now, 29))
@@ -521,9 +536,31 @@
       from: dayAt(now, from), to: dayAt(now, to), topic: choices[index % choices.length]?.topic,
       scheduled: upcoming.filter(item => item.date >= dayAt(now, from) && item.date <= dayAt(now, to))
     }));
-    return { settings, target, completed: completed.length, review, bankReview, practice, placement, week, weeks, dueCount: due.length, nextDay, todayChecks,
+    return { settings, target, completed: completed.length, review, bankReview, practice, practiceReason, placement,
+      week, weeks, deferred, dueCount: due.length, nextDay, todayChecks,
       unavailableReview: dueTasks.filter(task => !task.ready).map(task => task.focus), slots, usedSeconds, pace, deadlineSoon };
   }
 
-  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, lessonChecks, lessonCheckResult, dueSkills, report, reportWindows, learningPlan, roadmap, prerequisiteTrail, intervals };
+  function changeTaskDate(state, catalog, key, postpone, now = new Date()) {
+    const plan = learningPlan(state, catalog, now);
+    const deferred = Object.fromEntries(Object.entries(plan.settings.deferred || {})
+      .filter(([id, date]) => date > dayAt(now) || (id.startsWith('practice:') && date >= dayAt(now, -29))));
+    if (postpone) {
+      const offered = [
+        ...plan.todayChecks.map(task => 'check:' + task.focus),
+        ...plan.review.map(task => 'skill:' + task.focus),
+        plan.bankReview && 'bank:' + plan.bankReview.subject,
+        plan.practice && 'practice:' + plan.practice.topic
+      ];
+      if (!key || !offered.includes(key)) return state;
+      deferred[key] = dayAt(now, 1);
+    } else {
+      if (!plan.deferred.some(([id]) => id === key)) return state;
+      delete deferred[key];
+    }
+    return { ...state, plan: Core.normalizePlan({ ...plan.settings, deferred }) };
+  }
+
+  globalThis.EachVeyaCoach = { assessment, focusIds, mistakeFocus, lessonChecks, lessonCheckResult, dueSkills,
+    report, reportWindows, learningPlan, changeTaskDate, roadmap, prerequisiteTrail, intervals };
 })();

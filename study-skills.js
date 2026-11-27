@@ -288,5 +288,12 @@
   }
 
   Object.assign(skills, globalThis.EachVeyaScience.topics);
+  for (const [topic, prerequisite] of [
+    ['equation-models', 'atomic-structure'],
+    ['amount-concentration', 'mole-calculations'],
+    ['natural-selection', 'trait-frequency']
+  ]) {
+    skills[topic] = { ...skills[topic], prerequisites: [prerequisite] };
+  }
   globalThis.EachVeyaSkills = { skills, decorateEquation };
 })();

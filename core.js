@@ -17,16 +17,31 @@
     return focusModes.includes(mode) && Object.hasOwn(SkillData.skills, value) && SkillData.skills[value].subject === subject ? value : null;
   }
 
+  function planDate(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return '';
+    const date = new Date(value + 'T00:00:00');
+    return Number.isFinite(date.getTime()) && localDate(date) === value ? value : '';
+  }
+
+  function planTaskKey(value) {
+    if (typeof value !== 'string') return false;
+    const [kind, id, extra] = value.split(':');
+    if (extra !== undefined) return false;
+    if (kind === 'check' || kind === 'skill') return Object.hasOwn(SkillData.skills, id);
+    if (kind === 'bank') return Object.hasOwn(topicsBySubject, id);
+    return kind === 'practice' && Object.values(topicsBySubject).some(topics => topics.includes(id));
+  }
+
   function normalizePlan(value) {
     if (!value || value.enabled !== true) return null;
     const goal = value.goal === 'all' || Object.hasOwn(topicsBySubject, value.goal) ? value.goal : 'balanced';
     const minutes = Number(value.minutes);
-    const deadline = typeof value.deadline === 'string' ? value.deadline : '';
-    const date = /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? new Date(deadline + 'T00:00:00') : null;
+    const deferred = Object.fromEntries(Object.entries(typeof value.deferred === 'object' && value.deferred || {}).slice(0, 100)
+      .filter(([key, date]) => planTaskKey(key) && planDate(date)));
     return {
       enabled: true, goal, topic: topicsBySubject[goal]?.includes(value.topic) ? value.topic : '',
       minutes: Number.isInteger(minutes) && minutes >= 5 && minutes <= 90 ? minutes : 15,
-      deadline: date && Number.isFinite(date.getTime()) && localDate(date) === deadline ? deadline : ''
+      deadline: planDate(value.deadline), ...(Object.keys(deferred).length ? { deferred } : {})
     };
   }
 

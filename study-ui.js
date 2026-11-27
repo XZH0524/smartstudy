@@ -6,7 +6,223 @@
   const Science = globalThis.EachVeyaScience;
   const Pilot = globalThis.EachVeyaPilot;
   const { skills } = globalThis.EachVeyaSkills;
-  const { topics, topicsBySubject, subjects } = globalThis.SmartStudyData;
+  const { bilingual: bi, topics, topicsBySubject, subjects } = globalThis.SmartStudyData;
+
+  // The first response selects an explanation. The second question changes the context.
+  // These short exchanges teach a step and never contribute to the ability record.
+  const guide = {
+    balance: [
+      [bi('8 = x − 3。要让 x 单独留下，两边应该怎样做？', 'In 8 = x − 3, what should you do to both sides to isolate x?'),
+        bi('加 3', 'Add 3'), bi('减 3', 'Subtract 3'),
+        bi('加 3 与减 3 互相抵消，两边仍相等。', 'Adding 3 undoes subtracting 3. The two sides stay equal.'),
+        bi('把等式想成天平。左盘是 8，右盘比 x 少 3。给两盘各放 3，右盘就变成 x。', 'Picture a balance. One side is 8 and the other is 3 below x. Adding 3 to each side makes the second side equal to x.')],
+      [bi('4x + 5 = 29。先移去 +5，右边变成几？', 'In 4x + 5 = 29, remove +5 first. What is the new value on the right?'),
+        bi('24', '24'), bi('34', '34'),
+        bi('等式右边也减 5，所以是 24。接下来才处理系数。', 'Subtract 5 from the right as well, giving 24. Deal with the coefficient next.'),
+        bi('先用相反运算。左边减 5 后只剩 4x，右边也做 29 − 5。', 'Undo the addition first. Subtracting 5 leaves 4x on the left, and you also subtract 5 from 29.') ]
+    ],
+    coefficient: [
+      [bi('−4x = 20。应该除以哪个数才能只留下 x？', 'In −4x = 20, what must you divide by to isolate x?'),
+        bi('−4', '−4'), bi('4', '4'),
+        bi('−4 是完整系数。两边除以 −4，左边就成了 x。', 'The coefficient is −4. Dividing both sides by −4 leaves x on the left.'),
+        bi('把 −4x 写成 (−4) × x。除以 +4 仍留下 −x，除以 −4 才留下 x。', 'Write −4x as (−4) × x. Dividing by +4 leaves −x. Dividing by −4 leaves x.')],
+      [bi('在 6x = −18 中，哪个值代回原式能成立？', 'In 6x = −18, which value works when substituted?'),
+        bi('x = −3', 'x = −3'), bi('x = 3', 'x = 3'),
+        bi('6 × (−3) = −18。代入可以核对符号。', '6 × (−3) = −18. Substitution checks the sign.'),
+        bi('6 × 3 得正 18。要得到负 18，乘的另一个数须为负。', '6 × 3 is positive 18. To get negative 18, the other factor must be negative.')]
+    ],
+    distribution: [
+      [bi('展开 4(x − 3) 时，−3 应变成什么？', 'When you expand 4(x − 3), what does the −3 become?'),
+        bi('−12', '−12'), bi('−3', '−3'),
+        bi('括号里的 −3 也和 4 相乘，得到 −12。', 'The −3 is also multiplied by 4, giving −12.'),
+        bi('把 4(x − 3) 想成四份 x − 3 相加。x 有四份，−3 也有四份。', 'Think of 4(x − 3) as four copies of x − 3. Both terms appear four times.')],
+      [bi('哪一式等价于 −2(x + 5)？', 'Which expression is equivalent to −2(x + 5)?'),
+        bi('−2x − 10', '−2x − 10'), bi('−2x + 10', '−2x + 10'),
+        bi('−2 乘 x 得 −2x，乘 +5 得 −10。', 'Multiply x by −2 to get −2x and +5 by −2 to get −10.'),
+        bi('令 x = 0 检查常数。原式是 −2 × 5 = −10，所以常数项要带负号。', 'Try x = 0 to check the constant. The original equals −2 × 5 = −10, so the constant is negative.')]
+    ],
+    'common-denominator': [
+      [bi('把 1/4 改写成以 12 为分母的等值分数，应写什么？', 'Which fraction with denominator 12 is equivalent to 1/4?'),
+        bi('3/12', '3/12'), bi('1/12', '1/12'),
+        bi('分母乘 3，分子也乘 3，分数的大小不变。', 'Multiply both the numerator and denominator by 3 to preserve the value.'),
+        bi('把一块占整张纸四分之一的纸再分成三等份。原来的一块变成三小块，每小块是整张纸的 1/12。', 'Imagine cutting one quarter of a sheet into three equal pieces. The same area is now three pieces of size 1/12.')],
+      [bi('1/6 + 1/3 等于多少？', 'What is 1/6 + 1/3?'),
+        bi('1/2', '1/2'), bi('2/9', '2/9'),
+        bi('1/3 = 2/6，所以总共 3/6，也就是 1/2。', 'Since 1/3 equals 2/6, the sum is 3/6, or 1/2.'),
+        bi('先把 1/3 换成两份 1/6，再加上已有的一份 1/6。每一份的大小仍是 1/6。', 'Replace 1/3 with two sixths and add the one sixth you already have. The pieces are still sixths.')]
+    ],
+    agreement: [
+      [bi('The boy with two bags ___ to school every day. 主语决定用 walks 还是 walk？', 'The boy with two bags ___ to school every day. Which form matches the subject?'),
+        bi('walks', 'walks'), bi('walk', 'walk'),
+        bi('真正走路的是一个男孩，主语是 The boy。', 'One boy is walking. The subject is “the boy”.'),
+        bi('先划掉补充说明 with two bags。剩下 The boy ___ to school，主语是第三人称单数。', 'Cross out the extra detail “with two bags”. The subject that remains is singular: “the boy”.')],
+      [bi('The two girls near the door ___ in the choir. 应填 sing 还是 sings？', 'The two girls near the door ___ in the choir. Should it be “sing” or “sings”?'),
+        bi('sing', 'sing'), bi('sings', 'sings'),
+        bi('唱歌的是两个女孩，复数主语用 sing。', 'Two girls are singing, so the plural subject takes “sing”.'),
+        bi('用 they 替换 The two girls。念一下 They sing，听一听谁和动词搭配。', 'Replace “the two girls” with “they”. Say “They sing” to check the pairing.')]
+    ],
+    'past-simple': [
+      [bi('We ___ the museum yesterday. 选 visited 还是 visit？', 'We ___ the museum yesterday. Choose “visited” or “visit”.'),
+        bi('visited', 'visited'), bi('visit', 'visit'),
+        bi('yesterday 指已经结束的时间，visit 的过去式是 visited。', '“Yesterday” names a finished time. The past form of “visit” is “visited”.'),
+        bi('在时间线上把 yesterday 放在今天之前。句子说的是过去一次已经完成的活动。', 'Put “yesterday” before today on a timeline. This is a completed event in the past.')],
+      [bi('Last Friday, Malin ___ the late bus. 选 took 还是 takes？', 'Last Friday, Malin ___ the late bus. Choose “took” or “takes”.'),
+        bi('took', 'took'), bi('takes', 'takes'),
+        bi('Last Friday 指过去一次。take 的过去式是不规则的 took。', '“Last Friday” points to a past event. “Took” is the irregular past of “take”.'),
+        bi('先找时间再想词形。Last Friday 是结束的时间，这个动词不加 -ed，过去式是 took。', 'Find the time clue first. “Last Friday” is finished, and “take” becomes “took” in the past.')]
+    ],
+    'text-evidence': [
+      [bi('读两句：The library opens at nine. The book sale starts at ten. 哪一句能回答义卖何时开始？',
+        'Read: The library opens at nine. The book sale starts at ten. Which sentence tells you when the sale starts?'),
+        bi('The book sale starts at ten.', 'The book sale starts at ten.'), bi('The library opens at nine.', 'The library opens at nine.'),
+        bi('book sale 和 starts 都与所问的事相符。', 'Both “book sale” and “starts” match the event in the question.'),
+        bi('先遮住两个时间，只比动作。opens 说的是图书馆开门，starts 说的是义卖开始。', 'Cover both clock times and compare the events. “Opens” refers to the library and “starts” refers to the sale.')],
+      [bi('读两句：The bus leaves at eight. It reaches the station at nine. 问到站时间时，哪一个词能帮你定位？',
+        'Read: The bus leaves at eight. It reaches the station at nine. Which verb identifies the time it arrives?'),
+        bi('reaches', 'reaches'), bi('leaves', 'leaves'),
+        bi('reaches the station 是到站，所以是九点。', '“Reaches the station” means arrives there, so it is nine.'),
+        bi('把时间按出发和到达分开。leaves 是离开，reaches 是到达。', 'Put the times in two groups. “Leaves” is departure and “reaches” is arrival.') ]
+    ],
+    'average-speed': [
+      [bi('小车移动 12 秒，停 5 秒，再移动 8 秒。求全程平均速率时，用时是多少？',
+        'A cart moves for 12 seconds, stops for 5, and moves for 8 more. What time goes into the average speed for the whole trip?'),
+        bi('25 秒', '25 seconds'), bi('20 秒', '20 seconds'),
+        bi('总用时 12 + 5 + 8 = 25 秒，包含中间的停留。', 'The elapsed time is 12 + 5 + 8 = 25 seconds, including the stop.'),
+        bi('想象出发时开启秒表，到终点才停。小车停着的 5 秒，秒表仍在走。', 'Imagine starting a stopwatch at departure and stopping it at arrival. It keeps running while the cart waits.')],
+      [bi('计时器读数从 6 秒到 30 秒，途中停了 4 秒。总路程 72 米。全程平均速率是多少？',
+        'The timer reads 6 seconds at departure and 30 at arrival. The trip includes a 4-second stop and covers 72 metres. What is the average speed?'),
+        bi('3 米/秒', '3 m/s'), bi('3.6 米/秒', '3.6 m/s'),
+        bi('用时是 30 − 6 = 24 秒，72 ÷ 24 = 3 米/秒。', 'Elapsed time is 30 − 6 = 24 seconds. Divide 72 by 24 to get 3 m/s.'),
+        bi('30 − 6 已包含停留。用 72 米除以这 24 秒，不能再扣一次停留时间。', 'The 24 seconds already includes the stop. Divide 72 metres by all 24 seconds.') ]
+    ],
+    'mass-density': [
+      [bi('模拟量筒的读数从 14 mL 升到 22 mL。物体完全浸没，它占多少体积？',
+        'In a simulation, the reading rises from 14 mL to 22 mL with the object fully submerged. What volume does the object displace?'),
+        bi('8 mL', '8 mL'), bi('22 mL', '22 mL'),
+        bi('物体排开的体积是读数的增加量，22 − 14 = 8 mL。', 'The object displaces the increase in the reading: 22 − 14 = 8 mL.'),
+        bi('把 22 mL 拆成原有的 14 mL 和物体排开的部分。相减才留下物体占的体积。', 'Separate the 22 mL reading into the original 14 mL and the displaced part. Subtraction leaves the volume displaced by the object.')],
+      [bi('样品的质量是 45 g，体积是 15 cm³。每 1 cm³ 有多重？', 'A sample has a mass of 45 g and a volume of 15 cm³. What mass corresponds to 1 cm³?'),
+        bi('3 g', '3 g'), bi('1/3 g', '1/3 g'),
+        bi('把 45 g 平均分成 15 份，每份质量 3 g，密度为 3 g/cm³。', 'Share 45 g across fifteen cubic centimetres. Each has 3 g, so the density is 3 g/cm³.'),
+        bi('单位提示运算。要算克每立方厘米，就把克数放在上面，除以立方厘米数。', 'Let the units guide you. Grams per cubic centimetre means divide the grams by the volume in cubic centimetres.') ]
+    ],
+    'population-density': [
+      [bi('草地总面积 40 m²，其中 10 m² 没调查。计算样本计数密度要用哪一个面积？',
+        'A meadow covers 40 m², but 10 m² was not surveyed. Which area belongs in the sample density calculation?'),
+        bi('30 m²', '30 m²'), bi('40 m²', '40 m²'),
+        bi('计数只覆盖调查过的 40 − 10 = 30 m²。', 'The count covers only the 40 − 10 = 30 m² surveyed.'),
+        bi('在草地图上涂掉没调查的 10 m²。计数来自剩下的格子，分母也用这些格子的面积。', 'Shade out the 10 m² you did not survey. The count comes from the remaining squares, so their area is the denominator.')],
+      [bi('面积为 8 m² 和 12 m² 的两个不重叠样方，共数到 60 株。平均每平方米数到几株？',
+        'Two non-overlapping plots of 8 m² and 12 m² contain 60 plants in total. What is the count per square metre?'),
+        bi('3 株', '3 plants'), bi('30 株', '30 plants'),
+        bi('60 ÷ (8 + 12) = 3。分母是调查面积。', '60 ÷ (8 + 12) = 3. The denominator is the surveyed area.'),
+        bi('60 ÷ 2 得到的是平均每个样方的株数。要求每平方米，先把两个样方的面积相加。', '60 ÷ 2 gives the count per plot. To get the count per square metre, add the two areas first.') ]
+    ]
+  };
+
+  const scienceGuides = {
+    'forces-motion': [
+      bi('按方向相减', 'Subtract by direction'), bi('把力的大小直接相加', 'Add the magnitudes'),
+      bi('取向右为正。向右 9 N，向左 4 N，合力是多少？', 'Take right as positive. What is the net force of 9 N right and 4 N left?'),
+      bi('向右 5 N', '5 N right'), bi('向右 13 N', '13 N right'),
+      bi('两个方向符号相反，9 + (−4) = 5 N。', 'Opposite directions have opposite signs: 9 + (−4) = 5 N.')
+    ],
+    'wave-behaviour': [
+      bi('波长减半', 'Wavelength halves'), bi('波长也加倍', 'Wavelength doubles'),
+      bi('波速为 12 m/s，频率是 4 Hz，波长是多少？', 'A wave travels at 12 m/s with a frequency of 4 Hz. What is the wavelength?'),
+      bi('3 m', '3 m'), bi('48 m', '48 m'),
+      bi('波长 = 波速 ÷ 频率，12 ÷ 4 = 3 m。', 'Wavelength is speed divided by frequency: 12 ÷ 4 = 3 m.')
+    ],
+    'thermal-models': [
+      bi('热容较大者', 'The one with the greater heat capacity'), bi('热容较小者', 'The one with the smaller heat capacity'),
+      bi('热容为 30 J/K 的物体吸收 120 J，温度升高多少？', 'An object with heat capacity 30 J/K absorbs 120 J. How much does its temperature rise?'),
+      bi('4 K', '4 K'), bi('90 K', '90 K'),
+      bi('每升高 1 K 要吸收 30 J，120 ÷ 30 = 4 K。', 'Each 1 K rise needs 30 J. Divide 120 by 30 to get 4 K.')
+    ],
+    'fluid-models': [
+      bi('压强增大', 'Pressure increases'), bi('压强减小', 'Pressure decreases'),
+      bi('6 N 的垂直力均匀作用在 2 m² 上，平均压强是多少？', 'A uniform perpendicular force of 6 N acts over 2 m². What is the average pressure?'),
+      bi('3 Pa', '3 Pa'), bi('12 Pa', '12 Pa'),
+      bi('压强是单位面积所受的力，6 ÷ 2 = 3 Pa。', 'Pressure is force per unit area: 6 ÷ 2 = 3 Pa.')
+    ],
+    'atomic-structure': [
+      bi('它们是同位素', 'They are isotopes'), bi('它们属于不同元素', 'They are different elements'),
+      bi('某原子有 8 个质子和 10 个中子，质量数是几？', 'An atom has 8 protons and 10 neutrons. What is its mass number?'),
+      bi('18', '18'), bi('8', '8'),
+      bi('质量数包含质子和中子，8 + 10 = 18。', 'Mass number counts protons and neutrons: 8 + 10 = 18.')
+    ],
+    'equation-models': [
+      bi('改化学式前的系数', 'Change the coefficients'), bi('改化学式右下角的下标', 'Change the formula subscripts'),
+      bi('2 CO₂ 表示的氧原子总数是几？', 'How many oxygen atoms are represented by 2 CO₂?'),
+      bi('4', '4'), bi('2', '2'),
+      bi('每份有 2 个氧原子，两份共有 4 个。', 'Each molecule contains 2 oxygen atoms, so two contain 4.')
+    ],
+    'mole-calculations': [
+      bi('可以，摩尔质量可能不同', 'Yes, their molar masses may differ'), bi('不可以，摩尔数一样就一样重', 'No, equal amounts always have equal mass'),
+      bi('某物质的摩尔质量是 16 g/mol，3 mol 的质量是多少？', 'A substance has a molar mass of 16 g/mol. What is the mass of 3 mol?'),
+      bi('48 g', '48 g'), bi('16 g', '16 g'),
+      bi('每摩尔 16 g，3 mol 的质量是 3 × 16 = 48 g。', 'Each mole has a mass of 16 g. Three moles have 3 × 16 = 48 g.')
+    ],
+    'acid-base-models': [
+      bi('变为原来的 10 倍', 'It becomes ten times as large'), bi('降为原来的 1/10', 'It drops to one tenth'),
+      bi('比较 pH 为 5 和 pH 为 7 的两个模型。前者的氢离子活度是后者的多少倍？', 'Compare models at pH 5 and pH 7. How many times the hydrogen-ion activity of the second is in the first?'),
+      bi('100 倍', '100 times'), bi('2 倍', '2 times'),
+      bi('每降低一个 pH 单位，活度乘 10。相差两个单位就是 100 倍。', 'Each one-unit decrease in pH multiplies the activity by 10. For two units, that is 100 times.')
+    ],
+    'cell-transport': [
+      bi('仍在移动，净移动可以为零', 'They still move. Net movement can be zero.'), bi('分子停止移动', 'The molecules stop moving'),
+      bi('每秒有 7 个粒子从甲到乙，也有 7 个从乙到甲。每秒净移到乙的粒子有几个？', 'Seven particles move each way per second. How many net particles move to side B per second?'),
+      bi('0 个', '0'), bi('14 个', '14'),
+      bi('净移动看差值，7 − 7 = 0。两个方向仍有粒子穿过。', 'Net movement is the difference, 7 − 7 = 0. Particles still cross in both directions.')
+    ],
+    'plant-energy': [
+      bi('没有，仍有呼吸作用', 'No, respiration still occurs'), bi('停止了，因为检测到氧气净释放', 'Yes, because there is net oxygen release'),
+      bi('某模拟每分钟产生 12 单位氧气，呼吸消耗 5 单位。每分钟净释放多少？', 'A model produces 12 units of oxygen per minute and uses 5 in respiration. What is the net release per minute?'),
+      bi('7 单位', '7 units'), bi('17 单位', '17 units'),
+      bi('同时发生的消耗要扣除，所以净释放是 12 − 5 = 7。', 'Subtract simultaneous consumption. Net release is 12 − 5 = 7.')
+    ],
+    'human-systems': [
+      bi('不能，还需要每次泵出的体积', 'No, you also need volume pumped per beat'), bi('能，心率已经给出了每分钟体积', 'Yes, heart rate already gives volume per minute'),
+      bi('教学模型中，每分钟 60 次，每次泵出 40 mL。每分钟泵出多少？', 'A teaching model pumps 40 mL per beat at 60 beats per minute. What is the volume per minute?'),
+      bi('2,400 mL', '2,400 mL'), bi('100 mL', '100 mL'),
+      bi('每次体积乘每分钟次数，40 × 60 = 2,400 mL/min。', 'Multiply volume per beat by beats per minute: 40 × 60 = 2,400 mL/min.')
+    ],
+    'natural-selection': [
+      bi('不能，仅看到频率发生变化', 'No, it only shows a change in frequency'), bi('能，单次观察足以证明原因', 'Yes, one observation establishes the cause'),
+      bi('原来有 20/100，后来有 45/150 个体表现一种性状。频率如何变化？', 'A trait is present in 20 of 100 individuals, then in 45 of 150. What happened to the frequency?'),
+      bi('从 20% 升到 30%', 'It rose from 20% to 30%'), bi('从 20% 升到 45%', 'It rose from 20% to 45%'),
+      bi('两次样本大小不同。分别算 20 ÷ 100 和 45 ÷ 150，再比较比例。', 'The sample sizes differ. Compute 20 ÷ 100 and 45 ÷ 150, then compare the proportions.')
+    ]
+  };
+
+  function dialogueFor(focus) {
+    if (Object.hasOwn(guide, focus)) return guide[focus];
+    if (!Object.hasOwn(Science.topics, focus)) return null;
+    const skill = Science.topics[focus];
+    if (Object.hasOwn(scienceGuides, focus)) {
+      const [first, firstDistractor, prompt, second, secondDistractor, result] = scienceGuides[focus];
+      return [[skill.question, first, firstDistractor, skill.principle, skill.notice],
+        [prompt, second, secondDistractor, result, bi(`${skill.example.zh} 回到这道题：${result.zh}`, `${skill.example.en} Back to this question: ${result.en}`)]];
+    }
+    const { numerator, denominator, numeratorUnit, denominatorUnit, unit, percent } = skill;
+    if (!numerator || !denominator) return null;
+    const inEnglish = value => ['条', '只'].includes(value) ? 'observations' : value;
+    const a = percent ? 6 : 24;
+    const b = percent ? 24 : 6;
+    const result = percent ? 25 : 4;
+    return [
+      [skill.question, denominator, numerator, skill.principle,
+        bi(`看到「每」或「占」时，先确定用什么作基准。这里用「${denominator.zh}」作分母。`,
+          `Think of the quantity after “per” or the total a share is compared with. Here, use “${denominator.en}” as the denominator.`)],
+      [bi(`换一份虚拟记录。「${numerator.zh}」为 ${a} ${numeratorUnit}，「${denominator.zh}」为 ${b} ${denominatorUnit}。求「${skill.target.zh}」。`,
+        `Try another virtual record. “${numerator.en}” is ${a} ${inEnglish(numeratorUnit)} and “${denominator.en}” is ${b} ${inEnglish(denominatorUnit)}. Find “${skill.target.en}”.`),
+      bi(`${result} ${unit}`, `${result} ${unit}`), bi(`${percent ? a : b / a} ${unit}`, `${percent ? a : b / a} ${unit}`),
+      bi(`${a} ÷ ${b}${percent ? ' × 100%' : ''} = ${result} ${unit}。`,
+        `${a} ÷ ${b}${percent ? ' × 100%' : ''} = ${result} ${unit}.`),
+      bi(`先把 ${a} 放进分子、${b} 放进分母。${percent ? '最后把比值换成百分数。' : '最后核对原题所求单位。'}`,
+        `Put ${a} in the numerator and ${b} in the denominator.${percent ? ' Convert the ratio to a percentage.' : ' Check the unit the question asks for.'}`)]
+    ];
+  }
 
   const copy = {
     evidenceLessons: ['三题专项试练', 'Three-question workshops'],
@@ -48,6 +264,13 @@
     coachIntro: ['先判断自己卡在哪一步，再用没见过的题检验理解。', 'Find the step you got stuck on, then check your understanding on a new question.'],
     coachBasis: ['这些提示和例题由预设教学规则提供，可在本地使用。', 'These guided prompts and worked examples use built-in teaching rules and work locally.'],
     coachPrompt: ['先想一想', 'Think it through'],
+    coachDialog: ['跟着提示想两步', 'Work through two prompts'],
+    coachDialogStep: ['第 {n} 步，共 2 步', 'Step {n} of 2'],
+    coachDialogAccept: ['这一步做对了。', 'This step is correct.'],
+    coachDialogRetry: ['换个角度想这一步。', 'Try a different way to think about this step.'],
+    coachDialogNext: ['换个情境再想一步', 'Try a different example'],
+    coachDialogEnd: ['接下来可以用专项的新题独立检验。', 'Next, use fresh practice questions to check your understanding independently.'],
+    coachDialogReset: ['从第一步重来', 'Start again'],
     coachHelp: ['查看这一步的提示', 'Get a hint for this step'],
     coachRule: ['查看规则与例题', 'See the rule and a worked example'],
     coachPrerequisites: ['先复习这些基础步骤', 'Review these prerequisite skills'],
@@ -89,6 +312,19 @@
     planComplete: ['今日任务完成', 'Daily goal complete'],
     planBudgetDone: ['今天的计划用时已到', 'Today’s planned time is up'],
     planMoreTasks: ['查看其余任务', 'See the other tasks'],
+    planReasonResume: ['上次的练习还没做完，可以从原处继续。', 'Your last practice is unfinished. Pick up where you left off.'],
+    planReasonCheck: ['复测已到期，用一道新题检验这一步。', 'This check is due. Use a fresh question to check this skill.'],
+    planReasonProbe: ['近期作答出现了错因线索，先用新题确认。', 'A recent answer suggests a difficulty. Check it on new questions.'],
+    planReasonRetake: ['不同题目里出现相同错误，优先练这一步。', 'The same error appeared on different questions. Practise this step first.'],
+    planReasonSpaced: ['到了复习日，看看隔一段时间还能不能独立做对。', 'This review is due. Check what you can still do unaided.'],
+    planReasonBank: ['有已到期的错题，可以先订正。', 'Some missed questions are due for another try.'],
+    planReasonWeak: ['近期作答显示这个知识点有待巩固。', 'Recent answers suggest this topic needs more practice.'],
+    planReasonGoal: ['这是你在计划里选的重点知识点。', 'You chose this as your focus topic.'],
+    planReasonCoverage: ['计划优先安排近期练习较少的知识点。', 'The plan prioritises topics you have practised less recently.'],
+    planReasonReturned: ['这项练习来自之前顺延的任务。', 'This practice was postponed from an earlier day.'],
+    planDefer: ['移到明天', 'Move to tomorrow'], planRestore: ['移回今天', 'Bring back today'],
+    planDeferred: ['已移到 {date}', 'Moved to {date}'], planDeferredOnly: ['今天的任务已调整。', 'Today’s tasks have been adjusted.'],
+    planDeferSaved: ['任务已移到明天。', 'Task moved to tomorrow.'], planRestoreSaved: ['任务已移回今天。', 'Task brought back to today.'],
     planOther: ['自由练习', 'Choose your practice'],
     planUpcoming: ['未来 7 天', 'Next 7 days'], planMonth: ['未来 30 天', 'Next 30 days'],
     planExamSoon: ['考前一周优先巩固已有知识，并缩短新练习。', 'In the week before the exam, prioritise review and keep new sets short.'],
@@ -112,6 +348,9 @@
     pilotGoPath: ['回到试点路线', 'Back to the pilot path'],
     pilotReport: ['试点路线的独立作答', 'Independent answers in the pilot paths'],
     pilotReportBasis: ['按整条路线显示起点、隔天和第 7 天的结果。每次只有 1 道题。', 'See each path’s initial, next-day and Day 7 results. There is one question at each check.'],
+    pilotStepBasis: ['每个格子只反映这次的答案。还未完成的复测没有分数。', 'Each result describes this answer only. Unfinished checks have no score.'],
+    pilotStepSkill: ['作答步骤', 'Answer step'], pilotStepYes: ['做对', 'Correct'],
+    pilotStepNo: ['需再练', 'Needs practice'], pilotStepPending: ['尚未测评', 'Not yet assessed'],
     pilotIndependent: ['独立答对 {correct}/{total} 题', '{correct}/{total} correct without hints'],
     report: ['学习报告', 'Study report'], reportIntro: ['根据已提交的作答比较表现，并查看下一步可练的知识点。', 'Compare submitted answers and choose what to practise next.'],
     reportToday: ['今天', 'Today'], reportWeek: ['近 7 天', 'Last 7 days'], reportMonth: ['近 30 天', 'Last 30 days'], reportQuarter: ['近 90 天', 'Last 90 days'],
@@ -159,8 +398,8 @@
     const coachUrl = id => '#coach/' + id;
     const statusKey = record => record.equationLevel && record.status === 'confirmed' ? 'coachEquationConfirmed' : sectionStatus[record.status];
 
-    function linkToCoach(id, label, extra = '') {
-      return `<a class="button secondary ${extra}" href="${coachUrl(id)}">${label || text(skills[id].label)}</a>`;
+    function linkToCoach(id, label, extra = '', startAt = '') {
+      return `<a class="button secondary ${extra}" href="${coachUrl(id)}${startAt}">${label || text(skills[id].label)}</a>`;
     }
 
     function renderEvidence(question) {
@@ -175,7 +414,7 @@
       if (question.stepHints && focus) {
         const marks = Core.evaluateAnswer(question, Core.responseOf(attempt)).marks;
         return `<div class="mistake-clue"><p><strong>${t('stepHint')}</strong> ${text(question.stepHints[marks.indexOf(false)])}</p>${schedule}
-          ${linkToCoach(focus, t('coachJump'))}</div>`;
+          ${linkToCoach(focus, t('coachJump'), '', dialogueFor(focus) && marks[0] && !marks[1] ? '/step-2' : '')}</div>`;
       }
       if (question.fields) {
         if (!focus) return '';
@@ -196,7 +435,26 @@
         ${linkToCoach(focus, t('coachJump'))}</div>`;
     }
 
-    function renderCoach(state, catalog, focus) {
+    function renderDialogue(focus, progress, entryTurn) {
+      const rounds = dialogueFor(focus);
+      if (!rounds) return '';
+      const phase = progress?.focus === focus && progress.entryTurn === entryTurn ? progress : { turn: entryTurn, choice: null };
+      const [prompt, correct, distractor, right, wrong] = rounds[phase.turn];
+      const options = phase.turn === 0 ? [distractor, correct] : [correct, distractor];
+      const answered = phase.choice !== null;
+      const accepted = phase.choice === 1 - phase.turn;
+      return `<section class="coach-dialogue" aria-labelledby="coach-dialog-title">
+        <h3 id="coach-dialog-title" tabindex="-1">${t('coachDialog')}</h3>
+        <p class="section-note">${t('coachDialogStep', { n: phase.turn + 1 })}</p><p>${text(prompt)}</p>
+        ${answered ? `<p class="worked-example" tabindex="-1" id="coach-reply"><strong>${t(accepted ? 'coachDialogAccept' : 'coachDialogRetry')}</strong> ${text(accepted ? right : wrong)}</p>
+          ${phase.turn === 0 ? button(t('coachDialogNext'), 'coach-continue', 'secondary', `data-focus="${focus}"`)
+            : `<p>${t('coachDialogEnd')}</p>${button(t('coachDialogReset'), 'coach-reset', 'secondary', `data-focus="${focus}"`)}`}`
+          : `<div class="study-actions">${options.map((value, index) => button(text(value), 'coach-pick', 'secondary',
+            `data-focus="${focus}" data-choice="${index}"`)).join('')}</div>`}
+      </section>`;
+    }
+
+    function renderCoach(state, catalog, focus, dialogue, entryTurn = 0) {
       const profile = Coach.assessment(state, catalog);
       if (!Object.hasOwn(skills, focus)) {
         return `${heading(t('coach'), t('coachIntro'))}<section class="panel study-panel"><p>${t('coachBasis')}</p>
@@ -213,7 +471,8 @@
         <div class="study-grid">
           <section class="panel study-panel" aria-labelledby="guide-title">
             <p class="eyebrow">${subjectName(skill.subject)} · ${t('coach')}</p>
-            <h2 id="guide-title">${t('coachPrompt')}</h2><p>${text(skill.question)}</p>
+            <h2 id="guide-title">${t('coachPrompt')}</h2>
+            ${renderDialogue(focus, dialogue, entryTurn) || `<p>${text(skill.question)}</p>`}
             <details class="study-details"><summary>${t('coachHelp')}</summary><p>${text(skill.notice)}</p></details>
             <details class="study-details"><summary>${t('coachRule')}</summary><p>${text(skill.principle)}</p><p class="worked-example">${text(skill.example)}</p></details>
             ${skill.source ? `<p class="field-help"><a href="${escapeHtml(skill.source)}" target="_blank" rel="noopener noreferrer">${t('scienceSource')}</a></p>` : ''}
@@ -279,21 +538,29 @@
     function renderToday(plan, active, compact = false) {
       const tasks = plan.review.map(({ focus, mode, count }) => ({
         label: t('planReview', { topic: skills[focus].label[language()], n: count }),
-        action: 'focus-practice', attrs: `data-focus="${focus}" data-mode="${mode}"`
+        action: 'focus-practice', attrs: `data-focus="${focus}" data-mode="${mode}"`,
+        key: 'skill:' + focus, reason: { probe: 'planReasonProbe', retake: 'planReasonRetake', spaced: 'planReasonSpaced' }[mode]
       }));
       tasks.unshift(...plan.todayChecks.map(({ focus, weekly }) => ({
         label: t(weekly ? 'lessonWeeklyStart' : 'lessonStartSkill', { skill: skills[focus].label[language()] }),
-        action: 'lesson-check', attrs: `data-focus="${focus}"` })));
+        action: 'lesson-check', attrs: `data-focus="${focus}"`, key: 'check:' + focus, reason: 'planReasonCheck' })));
       if (plan.bankReview) tasks.push({ label: t('planBankReview', {
         subject: subjects.find(item => item.id === plan.bankReview.subject).label[language()], n: plan.bankReview.count
-      }), action: 'plan-review' });
+      }), action: 'plan-review', key: 'bank:' + plan.bankReview.subject, reason: 'planReasonBank' });
       if (plan.practice) tasks.push({ label: t('planStart', { topic: topics[plan.practice.topic][language()], n: plan.practice.count }),
-        action: 'plan-practice' });
-      if (active) tasks.unshift({ label: t('resume'), action: 'resume' });
+        action: 'plan-practice', key: 'practice:' + plan.practice.topic, reason: plan.practiceReason });
+      if (active) tasks.unshift({ label: t('resume'), action: 'resume', reason: 'planReasonResume' });
       const [first, ...extra] = tasks;
-      const renderTask = (task, style) => button(task.label, task.action, style, task.attrs);
+      const renderTask = (task, style) => `<div class="daily-task">${button(task.label, task.action, style, task.attrs)}
+        ${!compact && task.key ? button(t('planDefer'), 'plan-defer', 'ghost', `data-task="${task.key}"`) : ''}
+        <p class="field-help">${t(task.reason)}</p></div>`;
+      const deferredLabel = key => {
+        const [kind, id] = key.split(':');
+        if (kind === 'bank') return subjectName(id);
+        return text(kind === 'practice' ? topics[id] : skills[id].label);
+      };
       const done = Math.min(plan.target, plan.completed);
-      const status = plan.completed >= plan.target ? 'planComplete' : 'planBudgetDone';
+      const status = plan.completed >= plan.target ? 'planComplete' : plan.slots ? 'planDeferredOnly' : 'planBudgetDone';
       return `<section class="today-plan ${compact ? 'today-compact' : 'panel study-panel'}" aria-labelledby="daily-plan-title">
         <div class="daily-top"><div><h2 id="daily-plan-title">${t('planTask')}</h2><p>${t('planDailyTime', plan.settings)}</p></div>
           <strong class="daily-count" aria-hidden="true">${done}<span>/${plan.target}</span></strong></div>
@@ -303,7 +570,10 @@
         </div>
         ${first ? renderTask(first) : `<strong class="daily-done">${t(status)}</strong> <a class="button secondary" href="#practice">${t('planOther')}</a>`}
         ${compact ? '' : `
-          ${extra.length ? `<details class="study-details"><summary>${t('planMoreTasks')}</summary><div class="study-actions">${extra.map(task => renderTask(task, 'secondary')).join('')}</div></details>` : ''}
+          ${extra.length ? `<details class="study-details"><summary>${t('planMoreTasks')}</summary>${extra.map(task => renderTask(task, 'secondary')).join('')}</details>` : ''}
+          ${plan.deferred.length ? `<ul class="study-skill-list deferred-tasks">${plan.deferred.map(([key, date]) => `<li>
+            <span>${deferredLabel(key)} · ${t('planDeferred', { date: formatDate(date) })}</span>
+            ${button(t('planRestore'), 'plan-restore', 'ghost', `data-task="${key}"`)}</li>`).join('')}</ul>` : ''}
           ${plan.placement && plan.slots && !active ? `<div class="study-actions">${button(t('planPlacement', {
             subject: subjects.find(item => item.id === plan.placement).label[language()]
           }), 'diagnostic', 'secondary', `data-subject="${plan.placement}"`)}</div>` : ''}
@@ -342,16 +612,21 @@
       </section>`;
     }
 
-    function renderPilotReport(state) {
+    function renderPilotReport(state, catalog) {
       const paths = Object.values(Pilot.routes).map(route => ({ route, rows: Pilot.progress(state, route) }))
         .filter(({ rows }) => rows[0].session);
       if (!paths.length) return '';
       return `<section class="panel study-panel" aria-labelledby="pilot-report-title">
-        <h2 id="pilot-report-title">${t('pilotReport')}</h2><p class="field-help">${t('pilotReportBasis')}</p>
+        <h2 id="pilot-report-title">${t('pilotReport')}</h2><p class="field-help">${t('pilotReportBasis')} ${t('pilotStepBasis')}</p>
         <div class="study-grid">${paths.map(({ route, rows }) => `<section data-pilot-report="${route.subject}">
           <h3>${subjectName(route.subject)} · ${text(topics[route.topic])}</h3>
           <ul class="study-skill-list">${rows.filter(row => row.stage.evidence === 'independent').map(row => `<li>
             <strong>${text(row.stage.label)}</strong><span class="field-help">${pilotStatus(row)}</span></li>`).join('')}</ul>
+          <table class="pilot-step-report"><thead><tr><th scope="col">${t('pilotStepSkill')}</th>
+            ${rows.filter(row => row.stage.evidence === 'independent').map(row => `<th scope="col">${text(row.stage.label)}</th>`).join('')}</tr></thead>
+            <tbody>${Pilot.stepResults(route, rows, catalog).map(row => `<tr><th scope="row">${text(row.label)}</th>
+              ${row.results.map(mark => `<td data-step-mark="${mark ?? 'pending'}">${t(mark === null ? 'pilotStepPending' : mark ? 'pilotStepYes' : 'pilotStepNo')}</td>`).join('')}</tr>`).join('')}
+            </tbody></table>
           ${button(t('pilotGoPath'), 'pilot-path', 'secondary', `data-subject="${route.subject}"`)}
         </section>`).join('')}</div></section>`;
     }
@@ -459,7 +734,7 @@
             recent.total ? t('reportTimeCoverage', recent) : '')}</dl>
           <p class="field-help">${recent.total && previous.total ? t('reportDelta', { ...recent, previousCorrect: previous.correct, previousTotal: previous.total }) : t('reportNoComparison')}</p>
         </section>
-        ${renderPilotReport(state)}
+        ${renderPilotReport(state, catalog)}
         ${recent.total ? renderCharts(report.daily, days === 90) : ''}
         ${report.checks.length ? `<section class="panel study-panel report-checks"><h2>${t('reportChecks')}</h2>
           <ul class="study-skill-list">${report.checks.map(row => `<li><span class="section-note">${subjectName(skills[row.focus].subject)}</span>
@@ -507,5 +782,5 @@
 
     return { renderEvidence, renderClue, renderCoach, renderFocusResult, renderToday, renderPlan, renderReport, renderBackup, renderQuestionReport, planTopicOptions };
   }
-  globalThis.EachVeyaStudyUI = { copy, create };
+  globalThis.EachVeyaStudyUI = { copy, create, hasDialogue: focus => Object.hasOwn(guide, focus) || Object.hasOwn(Science.topics, focus) };
 })();

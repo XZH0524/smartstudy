@@ -62,6 +62,14 @@
       bi('第一步正确。把调查到的总株数除以实际调查面积。', 'Your first step is correct. Divide the total number of plants counted by the surveyed area.')]
   };
 
+  const reportSteps = {
+    english: [bi('找支持答案的原句', 'Find the supporting sentence')],
+    math: [bi('移去常数项', 'Remove the constant'), bi('求未知数', 'Solve for the unknown')],
+    physics: [bi('确定全程用时', 'Find the elapsed time'), bi('求平均速率', 'Find the average speed')],
+    chemistry: [bi('求样品体积', 'Find the sample volume'), bi('求质量密度', 'Find the mass density')],
+    biology: [bi('求实际调查面积', 'Find the surveyed area'), bi('求样本计数密度', 'Find the sample density')]
+  };
+
   const routes = {
     english: makeRoute('english', 'reading', 'A1', 'text-evidence', [
       [['pilot-reading-clock-entry@2', 'time-evidence', deepSeekReview]],
@@ -188,5 +196,16 @@
       answers, index: unanswered === -1 ? ids.length - 1 : unanswered } };
   }
 
-  globalThis.EachVeyaPilot = { routes, skillPath, entryHints, sessionStage, progress, start };
+  function stepResults(route, rows, catalog) {
+    const Core = globalThis.SmartStudyCore;
+    const checks = rows.filter(row => row.stage.evidence === 'independent').map(row => {
+      const [attempt] = row.answers;
+      const question = attempt && catalog.find(item => item.id === attempt.questionId);
+      const grade = question && attempt.hinted === false && Core.evaluateAnswer(question, Core.responseOf(attempt));
+      return grade ? grade.marks || [grade.correct] : [];
+    });
+    return reportSteps[route.subject].map((label, index) => ({ label, results: checks.map(check => check[index] ?? null) }));
+  }
+
+  globalThis.EachVeyaPilot = { routes, skillPath, entryHints, sessionStage, progress, start, stepResults };
 })();

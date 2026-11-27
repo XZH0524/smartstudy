@@ -136,5 +136,27 @@
       'For independent sources, multiply the probabilities of receiving a. Model A gives 0.25 × 0.60 = 0.15, and model B gives 0.50 × 0.30 = 0.15. The probability stays the same.')
   });
 
-  globalThis.EachVeyaQuestionVersions = { version: 4 };
+  // Restore the final line in explanations that previously stopped at the calculation.
+  const concludingMathSteps = {
+    'arithmetic-remainder-budget': [2, 3],
+    'arithmetic-before-tax': [1, 2, 3],
+    'algebra-negative-input': [1, 2, 3],
+    'algebra-tickets': [1, 2, 3],
+    'geometry-scaled-area': [1, 2, 3],
+    'functions-piecewise': [1, 2, 3],
+    'statistics-spinner': [1, 2, 3],
+    'statistics-weighted-mean': [1, 2, 3]
+  };
+  for (const [model, variants] of Object.entries(concludingMathSteps)) {
+    for (const number of variants) {
+      const original = ids.get(`b400-math-${model}-${number}`);
+      const answer = original.options[original.answer];
+      revise(original.id, { explanation: bilingual(
+        `${original.explanation.zh} 算得 ${answer.zh}。`,
+        `${original.explanation.en} The result is ${answer.en}.`
+      ) });
+    }
+  }
+
+  globalThis.EachVeyaQuestionVersions = { version: 5 };
 })();

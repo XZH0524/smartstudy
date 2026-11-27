@@ -219,7 +219,14 @@
     const orderedTopics = [...new Set([...ranked, ...topics])];
     const attempted = new Set(state.attempts.map(attempt => attempt.questionId));
     const families = new Map(pool.map(q => [q.id, practiceFamily(q)]));
-    const knownFamilies = new Set([...attempted].map(id => byId.get(id)).filter(q => q?.subject === options.subject).map(practiceFamily));
+    const familyPractice = new Map();
+    for (const id of attempted) {
+      const question = byId.get(id);
+      if (question?.subject !== options.subject) continue;
+      const family = practiceFamily(question);
+      familyPractice.set(family, (familyPractice.get(family) || 0) + 1);
+    }
+    const timesPractised = question => familyPractice.get(families.get(question.id)) || 0;
     const ids = [];
 
     // Finish untried questions in the matching pool before repeating any.
@@ -227,7 +234,7 @@
       const firstIndex = ids.length;
       const queues = orderedTopics.map(topic => {
         const queue = Core.shuffled(pool.filter(question => question.topic === topic && attempted.has(question.id) === repeat), random);
-        queue.sort((a, b) => Number(knownFamilies.has(families.get(a.id))) - Number(knownFamilies.has(families.get(b.id)))
+        queue.sort((a, b) => timesPractised(a) - timesPractised(b)
           || Number(Boolean(b.reviewedSchool)) - Number(Boolean(a.reviewedSchool)));
         const represented = new Set();
         const first = [], later = [];

@@ -890,6 +890,31 @@
     equal(Coach.learningPlan({ ...studied, plan: { ...plan, goal: 'english', topic: 'grammar' } }, questions, now).review.length, 0);
   });
 
+  await test('计划顺延不改成绩或任务预算，日期跨月后恢复正确题目', () => {
+    const today = new Date(2026, 3, 30, 23, 55);
+    const tomorrow = new Date(2026, 4, 1, 0, 2);
+    const settings = Core.normalizePlan({ enabled: true, goal: 'math', topic: 'algebra', minutes: 15 });
+    const withMistake = start({ ids: ['ma-a01'], count: 1 }, { ...Core.createState(), plan: settings });
+    const state = Core.advanceSession(Core.gradeAnswer(withMistake, questions, 3, knownTime), questions, knownTime);
+    const first = Coach.learningPlan(state, questions, today);
+    equal(first.review[0].focus, 'coefficient');
+    const skipped = Coach.changeTaskDate(state, questions, 'skill:coefficient', true, today);
+    const saved = Backup.parse(Backup.serialize(skipped), questions);
+    equal(saved.plan.deferred, { 'skill:coefficient': '2026-05-01' });
+    equal(saved.attempts, state.attempts);
+    equal(Coach.learningPlan(saved, questions, today).review, []);
+    equal(Coach.learningPlan(saved, questions, today).slots, first.slots);
+    equal(Coach.learningPlan(saved, questions, tomorrow).review[0].focus, 'coefficient');
+    const postponed = Coach.changeTaskDate(saved, questions, 'practice:algebra', true, today);
+    equal(Coach.learningPlan(postponed, questions, today).practice, null);
+    equal(Coach.learningPlan(postponed, questions, tomorrow).practiceReason, 'planReasonReturned');
+    const restored = Coach.changeTaskDate(postponed, questions, 'skill:coefficient', false, today);
+    equal(restored.plan.deferred, { 'practice:algebra': '2026-05-01' });
+    equal(Coach.learningPlan(restored, questions, today).review[0].focus, 'coefficient');
+    equal(Coach.changeTaskDate(restored, questions, 'practice:reading', true, today), restored);
+    equal(Core.normalizePlan({ ...settings, deferred: { 'practice:algebra': '2026-02-30', 'bad:key': '2026-05-01' } }), settings);
+  });
+
   await test('计划标明暂缺新题的复测项目，已练旧题不作为新题派发', () => {
     const now = new Date(2026, 3, 3, 12);
     const plan = Core.normalizePlan({ enabled: true, goal: 'math', topic: 'algebra', minutes: 15 });
@@ -1274,6 +1299,11 @@
     click('button[form="numeric-answer-form"]');
     assert(!document.querySelector('.answer-line, .numeric-mark'));
     await finishQuestions(() => false);
+    await go('report', '#pilot-report-title');
+    const grid = '.pilot-step-report tbody tr';
+    equal([...document.querySelectorAll(grid)].map(row => [...row.querySelectorAll('td')].map(cell => cell.dataset.stepMark)),
+      [['true', 'pending', 'pending'], ['false', 'pending', 'pending']]);
+    await go('result', back);
     click(back);
     await waitElement(stage('lesson'));
     click(stage('lesson'));
@@ -1313,6 +1343,7 @@
     equal([...element('[data-pilot-report="math"]').querySelectorAll('li strong')].map(node => node.textContent),
       ['起点测评', '隔天复测', '第 7 天复测']);
     assert([...element('[data-pilot-report="math"]').querySelectorAll('li')].every(node => node.textContent.includes('独立答对 1/1 题')));
+    equal([...document.querySelectorAll(grid + ' td')].map(cell => cell.dataset.stepMark), Array(6).fill('true'));
     fitsViewport();
     await resetUi();
   });
@@ -1605,6 +1636,13 @@
     }
     const mixed = Learning.practiceIds(state, { subject: 'math', topic: 'algebra', level: 'L2', format: 'all' }, () => 0.5);
     equal(new Set(mixed.slice(0, 2).map(id => Boolean(byId.get(id).fields))).size, 2);
+    const practised = answerPractice(state, [
+      'ma-pr-algebra-L2-1', 'ma-pr-algebra-L2-2', 'ma-pr-algebra-L2-3', 'ma-pr-algebra-L2-7@2'
+    ], [true, true, true, true]);
+    const rotated = Learning.practiceIds(practised, { subject: 'math', topic: 'algebra', level: 'L2', format: 'choice' }, () => 0.5);
+    const quotient = rotated.indexOf('ma-pr-algebra-L2-8@2');
+    const linear = rotated.findIndex(id => byId.get(id).equationFamily === 'linear');
+    assert(quotient >= 0 && linear > quotient);
     const archived = byId.get('school-garden-1');
     const revised = byId.get('school-garden-1@2');
     assert(archived.retired && revised.reviewedSchool && revised.material.body.en.includes('(open) a garden'));
@@ -2100,7 +2138,7 @@
       click('button[form="numeric-answer-form"]');
       assert(element('.feedback .mistake-clue').textContent.includes(hint));
       assert(!element('.feedback > details').open);
-      assert(element('.feedback a[href="#coach/' + focus + '"]'));
+      assert(element('.feedback a[href="#coach/' + focus + (wrongStep === 1 ? '/step-2' : '') + '"]'));
       assert(!document.querySelector('.feedback [data-action="lesson-check"]'));
 
       const yesterday = new Date();
@@ -2607,6 +2645,43 @@
     await go('records', '.backup-panel');
     assert(element('[data-action="backup-export"]'));
     assert(element('#backup-file'));
+    await resetUi();
+  });
+
+  await test('计划显示任务来由并支持顺延撤回，五科对话分支不计入学习成绩', async () => {
+    await resetUi();
+    await go('plan', '[data-action="plan-defer"]');
+    assert(element('.daily-task .field-help').textContent.includes('近期练习较少'));
+    const taskKey = element('[data-action="plan-defer"]').dataset.task;
+    click('[data-action="plan-defer"]');
+    assert(read().plan.deferred[taskKey]);
+    assert(element('.deferred-tasks').textContent.includes('已移到'));
+    replayStorage(key);
+    click('[data-action="plan-restore"]');
+    assert(!read().plan.deferred && !document.querySelector('.deferred-tasks'));
+    for (const focus of Object.keys(globalThis.EachVeyaSkills.skills)) {
+      // Allow normal browser navigation while this test visits every tutor page.
+      if (location.protocol === 'file:') await new Promise(resolve => setTimeout(resolve, 350));
+      await go('coach/' + focus, '[data-action="coach-pick"]');
+      click('[data-action="coach-pick"][data-choice="0"]');
+      assert(element('#coach-reply').textContent.includes('换个角度'));
+      click('[data-action="coach-continue"]');
+      assert(element('.coach-dialogue').textContent.includes('第 2 步'));
+      click('[data-action="coach-pick"][data-choice="0"]');
+      assert(element('#coach-reply').textContent.includes('这一步做对了'));
+      assert(element('.coach-dialogue').textContent.includes('独立检验'));
+      assert(!element('.coach-dialogue').textContent.includes('undefined'));
+      fitsViewport();
+    }
+    equal(read().attempts, []);
+    await go('coach/natural-selection', 'a[href="#coach/trait-frequency"]');
+    assert(element('a[href="#coach/trait-frequency"]'));
+    await go('coach/average-speed/step-2', '[data-action="coach-pick"]');
+    assert(element('.coach-dialogue').textContent.includes('第 2 步'));
+    click('[data-action="coach-pick"][data-choice="1"]');
+    assert(element('#coach-reply').textContent.includes('已包含停留'));
+    click('[data-action="coach-reset"]');
+    assert(element('.coach-dialogue').textContent.includes('第 1 步'));
     await resetUi();
   });
 

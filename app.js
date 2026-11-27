@@ -30,10 +30,11 @@
   const completeWorkshops = typeof Lessons?.roundIds === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || (Lessons.workshops?.[id] && Lessons.starterPairs?.[id]?.length === 2 && workshopSubjects.has(id)));
   const availableQuestions = new Set(data?.questions?.filter(question => !question.retired).map(question => question.id));
-  const completePilots = typeof Pilot?.progress === 'function' && data?.subjects?.every(({ id, available }) =>
+  const completePilots = typeof Pilot?.stepResults === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || Pilot.routes[id]?.stages.every(stage => stage.items.every(item => availableQuestions.has(item.questionId))));
-  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 4
-    || Core?.VERSION !== 10 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.lessonCheckResult || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, StudyUI, Backup, schoolPractice].some(component => !component)) {
+  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 5
+    || Core?.VERSION !== 10 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.changeTaskDate
+    || !StudyUI?.hasDialogue || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, Backup, schoolPractice].some(component => !component)) {
     document.getElementById('language').disabled = true;
     main.innerHTML = `<section class="panel configuration" role="alert">
       <h1>练习页面未加载完整</h1>
@@ -268,6 +269,7 @@
   let aiNotice = '';
   let aiFailedLevel = '';
   let reportDays = 7;
+  let coachDialogue = null;
   let roadmapSubject = '';
   let backupStatus = null;
   let questionClock = null;
@@ -395,7 +397,10 @@
       main.innerHTML = renderRecords();
       if (location.hash === '#records/backup') main.querySelector('.backup-panel').open = true;
     }
-    if (page === 'coach') main.innerHTML = study.renderCoach(state, questions, location.hash.split('/')[1]);
+    if (page === 'coach') {
+      const [, focus, entry] = location.hash.split('/');
+      main.innerHTML = study.renderCoach(state, questions, focus, coachDialogue, entry === 'step-2' ? 1 : 0);
+    }
     if (page === 'plan') main.innerHTML = study.renderPlan(state, questions, roadmapSubject);
     if (page === 'report') main.innerHTML = study.renderReport(state, questions, reportDays);
     if (page === 'account') main.innerHTML = renderAccount();
@@ -1428,7 +1433,7 @@
       const plan = Core.normalizePlan({ enabled: true, goal: document.getElementById('plan-goal').value,
         topic: document.getElementById('plan-topic').value, minutes: document.getElementById('plan-minutes').value,
         deadline: document.getElementById('plan-deadline').value });
-      commit(current => ({ ...current, plan }));
+      commit(current => ({ ...current, plan: Core.normalizePlan({ ...plan, deferred: current.plan?.deferred }) }));
       render();
       announce(t('planSaved'));
       main.querySelector('.today-plan button, .today-plan a')?.focus();
@@ -1501,6 +1506,35 @@
         const task = action === 'plan-review' ? plan.bankReview : plan.practice;
         if (task) await begin(task);
         else render();
+      }
+      if (action === 'plan-defer' || action === 'plan-restore') {
+        const defer = action === 'plan-defer';
+        let changed = false;
+        commit(current => {
+          const updated = Coach.changeTaskDate(current, Core.questionsForState(bank, current), target.dataset.task, defer);
+          changed = updated !== current;
+          return updated;
+        });
+        render();
+        if (changed) announce(t(defer ? 'planDeferSaved' : 'planRestoreSaved'));
+        main.querySelector('.today-plan button, .today-plan a')?.focus();
+      }
+      if (['coach-pick', 'coach-continue', 'coach-reset'].includes(action)) {
+        const { focus, choice } = target.dataset;
+        const [, currentFocus, entry] = location.hash.split('/');
+        if (route() !== 'coach' || currentFocus !== focus || !StudyUI.hasDialogue(focus)) return;
+        const entryTurn = entry === 'step-2' ? 1 : 0;
+        const progress = coachDialogue?.focus === focus && coachDialogue.entryTurn === entryTurn
+          ? coachDialogue : { focus, entryTurn, turn: entryTurn, choice: null };
+        if (action === 'coach-pick' && progress.choice === null && ['0', '1'].includes(choice)) {
+          coachDialogue = { ...progress, choice: Number(choice) };
+        } else if (action === 'coach-continue' && progress.turn === 0 && progress.choice !== null) {
+          coachDialogue = { ...progress, turn: 1, choice: null };
+        } else if (action === 'coach-reset') {
+          coachDialogue = { ...progress, turn: 0, choice: null };
+        } else return;
+        render();
+        (document.getElementById('coach-reply') || document.getElementById('coach-dialog-title'))?.focus();
       }
       if (action === 'roadmap-subject' && Object.hasOwn(topicsBySubject, target.dataset.subject)) {
         roadmapSubject = target.dataset.subject;
@@ -1649,6 +1683,7 @@
     main.querySelector(`[data-choice="${choice}"]`).click();
   });
   window.addEventListener('hashchange', () => {
+    coachDialogue = null;
     if (route() !== 'practice') {
       cancelAiRequest();
       forceSetup = false;
@@ -1685,7 +1720,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.30';
+    script.src = 'tests.js?v=2.31';
     document.body.appendChild(script);
   }
 })();
