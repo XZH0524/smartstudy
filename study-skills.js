@@ -74,6 +74,25 @@
     if (existing[question.id]) Object.assign(question, existing[question.id]);
   }
 
+  // Map only distractors that point to a recognisable misunderstanding.
+  const scienceClues = {
+    'b400-physics-forces-motion-net-L3-direct': [2, 'direction'],
+    'b400-physics-fluid-models-contact-L3-direct': [3, 'area-denominator'],
+    'b400-chemistry-atomic-structure-anion-L1-concept': [0, 'electron-proton'],
+    'b400-chemistry-equation-models-coefficient-L1-concept': [3, 'coefficient-subscript'],
+    'b400-chemistry-mole-calculations-from-mass-L1-concept': [1, 'mass-amount'],
+    'b400-biology-cell-transport-balance-L1-concept': [1, 'net-flow'],
+    'b400-biology-natural-selection-frequency-change-L1-concept': [2, 'count-versus-share']
+  };
+  for (const question of data.questions) {
+    const clue = scienceClues[question.id];
+    if (!clue) continue;
+    const [choice, kind] = clue;
+    if (choice === question.answer) throw new Error('Invalid science clue for ' + question.id);
+    question.errors = { ...question.errors, [choice]: question.topic };
+    question.errorKinds = { ...question.errorKinds, [choice]: kind };
+  }
+
   const numeric = values => values.map(value => bi(String(value), String(value)));
 
   function add(skill, key, index, variant, prompt, options, explanation, tagged, verification) {
@@ -297,5 +316,124 @@
   ]) {
     skills[topic] = { ...skills[topic], prerequisites: [prerequisite] };
   }
+
+  // These questions are reserved for independent checks after instruction.
+  // Only a distractor that expresses the named misconception counts as evidence.
+  const foundationChecks = {
+    'forces-motion': ['direction', [
+      ['向东 11 N、向西 3 N 的两个力作用在同一物体上。合力是多少？|Two forces of 11 N east and 3 N west act on one object. Find the net force.',
+        '向东 8 N|8 N east~向东 14 N|14 N east~向西 8 N|8 N west~向东 11 N|11 N east', '向东为正，11 − 3 = 8 N。|With east positive, 11 − 3 = 8 N.'],
+      ['同一物体受到大小都是 7 N、方向相反的两个力。合力大小是多少？|Two opposing forces of 7 N each act on an object. What is the net force magnitude?',
+        '0 N~14 N~7 N~49 N', '大小相同、方向相反的两个力相互抵消。|Equal forces in opposite directions cancel.']
+    ]],
+    'wave-behaviour': ['frequency-period', [
+      ['某振动 5 秒完成 20 个周期，频率是多少？|An oscillation completes 20 cycles in 5 seconds. What is the frequency?',
+        '4 Hz~0.25 Hz~20 Hz~100 Hz', '频率是每秒周期数，20 ÷ 5 = 4 Hz。|Frequency is cycles per second: 20 ÷ 5 = 4 Hz.'],
+      ['一个信号的频率为 2 Hz。一个周期用时多少？|A signal has frequency 2 Hz. How long is one cycle?',
+        '0.5 s~2 s~4 s~1 s', '每秒两个周期，一个周期用时 1/2 秒。|Two cycles each second means one cycle takes half a second.']
+    ]],
+    'thermal-models': ['heat-rate', [
+      ['虚拟记录显示 8 秒内传热 96 J。平均每秒传热多少？|A virtual record shows 96 J transferred in 8 seconds. What is the average transfer per second?',
+        '12 J~1/12 J~88 J~96 J', '能量除以用时，96 ÷ 8 = 12 J 每秒。|Divide the energy by the time: 96 ÷ 8 = 12 J per second.'],
+      ['热容为 15 J/K 的物体吸收 45 J，且没有相变。温度增加多少？|An object with heat capacity 15 J/K absorbs 45 J without changing phase. How much does its temperature rise?',
+        '3 K~1/3 K~30 K~45 K', '升高 1 K 需要 15 J，因此 45 ÷ 15 = 3 K。|Each kelvin requires 15 J, so the increase is 45 ÷ 15 = 3 K.']
+    ]],
+    'fluid-models': ['area-denominator', [
+      ['24 N 的垂直力均匀作用在 4 m² 上，平均压强是多少？|A perpendicular force of 24 N is spread uniformly over 4 m². What is the average pressure?',
+        '6 Pa~96 Pa~20 Pa~28 Pa', '用力除以面积，24 ÷ 4 = 6 Pa。|Divide force by area: 24 ÷ 4 = 6 Pa.'],
+      ['垂直力保持不变，均匀受力的面积变成原来的 3 倍。平均压强变成多少？|The perpendicular force is unchanged and the area it acts on uniformly triples. What happens to the average pressure?',
+        '变为原来的 1/3|It becomes one third as large~变为原来的 3 倍|It triples~保持不变|It stays the same~变为零|It becomes zero', '面积在分母，乘 3 后，压强除以 3。|Area is in the denominator. Tripling it divides the pressure by three.']
+    ]],
+    'atomic-structure': ['electron-proton', [
+      ['中性原子失去一个电子，哪一类粒子的数量减少？|A neutral atom loses one electron. Which particle count decreases?',
+        '电子|Electrons~质子|Protons~中子|Neutrons~质子和中子|Protons and neutrons', '形成离子时这里改变的是电子数，原子核组成保持不变。|The electron count changes. The nucleus keeps the same composition.'],
+      ['一种一价负离子有 9 个质子。它有多少个电子？|A singly negative ion contains 9 protons. How many electrons does it have?',
+        '10~9~8~18', '质子仍是 9 个，多一个电子后总电荷为 −1。|The 9 protons remain. One additional electron gives charge −1.']
+    ]],
+    'equation-models': ['coefficient-subscript', [
+      ['4H₂O 表示的氢原子总数是多少？|How many hydrogen atoms are represented by 4H₂O?',
+        '8~2~4~12', '每个水分子有 2 个氢原子，4 个共有 8 个。|Each water molecule has 2 hydrogen atoms. Four contain 8.'],
+      ['3NH₃ 表示的氢原子总数是多少？|How many hydrogen atoms are represented by 3NH₃?',
+        '9~3~6~12', '每个分子有 3 个氢原子，3 个共有 9 个。|There are 3 hydrogen atoms per molecule and 3 molecules, giving 9.']
+    ]],
+    'mole-calculations': ['mass-amount', [
+      ['某样品质量 36 g，摩尔质量 18 g/mol。物质的量是多少？|A sample has mass 36 g and molar mass 18 g/mol. What is its amount?',
+        '2 mol~18 mol~648 mol~0.5 mol', '用质量除以摩尔质量，36 ÷ 18 = 2 mol。|Divide the mass by molar mass: 36 ÷ 18 = 2 mol.'],
+      ['两份纯物质的质量相等。摩尔质量较大的那份，物质的量如何？|Two pure samples have equal mass. What is true of the amount in the one with larger molar mass?',
+        '较小|Smaller~一定相等|They are always equal~较大|Larger~一定为零|It must be zero', '质量固定，n = m/M。分母较大，商较小。|For fixed mass, n = m/M. The larger denominator gives a smaller amount.']
+    ]],
+    'acid-base-models': ['log-scale', [
+      ['某模型的 pH 从 7 降到 6。氢离子活度变为原来的多少倍？|A model’s pH falls from 7 to 6. By what factor does its hydrogen-ion activity change?',
+        '10 倍|10 times~1 倍|1 time~0.1 倍|0.1 times~100 倍|100 times', 'pH 下降一个单位，对应活度乘 10。|A one-unit pH decrease multiplies the activity by ten.'],
+      ['甲的 pH 为 4，乙为 6。甲的氢离子活度是乙的多少倍？|A has pH 4 and B has pH 6. How many times as large is the hydrogen-ion activity in A?',
+        '100 倍|100 times~2 倍|2 times~10 倍|10 times~0.01 倍|0.01 times', '相差两个 pH 单位，活度比为 10 × 10 = 100。|Two pH units give an activity ratio of 10 × 10 = 100.']
+    ]],
+    'cell-transport': ['net-flow', [
+      ['在模拟中，每秒有 9 个粒子从甲到乙，4 个从乙到甲。每秒净移到乙多少个？|In a simulation, 9 particles per second move from A to B and 4 from B to A. What is the net count entering B each second?',
+        '5~13~9~4', '净量是进入减离开，9 − 4 = 5。|Subtract the outgoing count from the incoming count: 9 − 4 = 5.'],
+      ['模拟中每秒各有 6 个粒子向相反方向跨膜。每秒净通过多少个？|In a model, 6 particles per second cross a membrane in each direction. What is the net count crossing per second?',
+        '0~12~6~36', '两个相反方向的数量相等，净变化是 6 − 6 = 0。|The equal counts in opposite directions give 6 − 6 = 0 net.']
+    ]],
+    'plant-energy': ['net-production', [
+      ['模型中每分钟光合产氧 11 单位，呼吸耗氧 4 单位。每分钟净产氧多少？|A model produces 11 oxygen units per minute by photosynthesis and uses 4 in respiration. What is the net production per minute?',
+        '7~15~11~4', '净产氧要扣掉呼吸消耗，11 − 4 = 7。|Subtract the oxygen used in respiration: 11 − 4 = 7.'],
+      ['光照记录显示产氧 8 单位、耗氧 8 单位。净产氧是多少？|A record in light shows 8 oxygen units produced and 8 used. What is the net production?',
+        '0~16~8~64', '产生和消耗相等，净量为零。|Production and consumption are equal, giving zero net production.']
+    ]],
+    'human-systems': ['amount-rate', [
+      ['教学模型中每跳一次泵出 30 mL，每分钟跳 70 次。每分钟泵出多少？|A teaching model pumps 30 mL per beat at 70 beats per minute. What volume is pumped per minute?',
+        '2100 mL~100 mL~30 mL~70 mL', '每次的量乘每分钟的次数，30 × 70 = 2100 mL。|Multiply the amount per beat by the rate: 30 × 70 = 2100 mL.'],
+      ['另一模型每次换气 250 mL，每分钟 16 次。每分钟换气多少？|Another model moves 250 mL per breath at 16 breaths per minute. How much air moves per minute?',
+        '4000 mL~266 mL~250 mL~16 mL', '每次的量乘次数，250 × 16 = 4000 mL 每分钟。|Multiply the amount per breath by the rate: 250 × 16 = 4000 mL per minute.']
+    ]],
+    'natural-selection': ['count-versus-share', [
+      ['样本甲中有 10/50 表现某性状，乙中有 12/100。哪组比例较高？|A trait appears in 10 of 50 in sample A and 12 of 100 in B. Which sample has the greater proportion?',
+        '甲|A~乙|B~一样高|Equal~任何数据都不能比较|The data cannot be compared', '甲为 20%，乙为 12%。总数不同，应比较比例。|A gives 20% and B 12%. Compare proportions when sample sizes differ.'],
+      ['前次记录 30/60 表现某性状，本次为 35/100。比例怎样变化？|The first sample has 30 of 60 with a trait. The second has 35 of 100. What happened to the proportion?',
+        '下降|It decreased~上升|It increased~相同|It stayed constant~不可比较|It cannot be compared', '前次为 50%，本次为 35%。计数增加时，比例仍可能下降。|The proportion went from 50% to 35%. A higher count can accompany a lower proportion.']
+    ]]
+  };
+  const localize = string => bi(...(string.includes('|') ? string.split('|') : [string, string]));
+  function addFoundationItems(focus, items, transfer) {
+    const { subject, topic } = skills[focus];
+    const [kind] = foundationChecks[focus];
+    items.forEach(([prompt, choices, explanation], index) => {
+      const options = choices.split('~').map(localize);
+      const answer = index + 1;
+      options.splice(answer, 0, options.shift());
+      data.questions.push({
+        id: `foundation-${transfer ? 'transfer-' : ''}${focus}-${index + 1}`, subject, topic, level: 'L2', focusOnly: true,
+        skill: 'application', role: transfer ? 'prerequisite-transfer' : 'prerequisite-check',
+        focus: [focus], prompt: localize(prompt), options, answer,
+        errors: { 0: focus }, errorKinds: { 0: kind }, explanation: localize(explanation),
+        safety: 'virtual-data', curriculumRefs: []
+      });
+    });
+  }
+  for (const [focus, [, items]] of Object.entries(foundationChecks)) addFoundationItems(focus, items, false);
+  // Follow-up items change the situation while checking the same prerequisite.
+  for (const [focus, items] of Object.entries({
+    'forces-motion': [
+      ['同一物体受到向北 15 N、向南 9 N 的力。合力是多少？|An object is pulled with 15 N north and 9 N south. What is its net force?',
+        '向北 6 N|6 N north~向北 24 N|24 N north~向南 6 N|6 N south~向南 24 N|24 N south',
+        '向北取正，15 − 9 = 6 N，结果指向北。|Take north as positive: 15 − 9 = 6 N north.'],
+      ['同一直线上，物体受到向左 12 N 和向右 12 N 的力。合力是多少？|An object has a 12 N force left and a 12 N force right along the same line. Find the net force.',
+        '0 N~24 N~12 N~144 N', '相反方向的 12 N 抵消，合力为零。|The opposing 12 N forces cancel. The net force is zero.']
+    ],
+    'atomic-structure': [
+      ['中性原子获得两个电子。核内的质子数如何变化？|A neutral atom gains two electrons. What happens to its proton count?',
+        '保持不变|It stays the same~增加两个|It increases by two~减少两个|It decreases by two~必变为零|It becomes zero',
+        '增加的是核外电子，核内质子数保持不变。|Only extra electrons are added. The proton count in the nucleus stays the same.'],
+      ['一个原子有 12 个质子，形成带 2 个单位正电荷的离子。离子有多少个电子？|An atom with 12 protons forms an ion of charge +2. How many electrons are in the ion?',
+        '10~12~14~2', '两个单位的正电荷意味着少两个电子，12 − 2 = 10。|Charge +2 means two fewer electrons than protons: 12 − 2 = 10.']
+    ],
+    'mole-calculations': [
+      ['装有 60 g 纯物质的样品，其摩尔质量是 30 g/mol。它含有多少物质的量？|A pure sample has mass 60 g and molar mass 30 g/mol. How much substance does it contain in moles?',
+        '2 mol~30 mol~60 mol~1800 mol', '每摩尔质量是 30 g，因此 60 ÷ 30 = 2 mol。|Each mole has a mass of 30 g, so 60 ÷ 30 = 2 mol.'],
+      ['同一物质取两份样品，一份 1 mol、一份 2 mol。两份样品质量是否相等？|Take 1 mol and 2 mol of the same substance. Do the samples have equal mass?',
+        '不相等，2 mol 的质量是 1 mol 的两倍|No. The 2 mol sample has twice the mass.~相等，因为摩尔质量相等|Yes, because molar mass is the same.~相等，因为都含有相同粒子数|Yes, because they contain the same number of particles.~无法比较|There is not enough information.',
+        '同一物质的摩尔质量相同，样品质量等于物质的量乘摩尔质量。|The molar mass is fixed for the same substance. Sample mass equals amount times molar mass.']
+    ]
+  })) addFoundationItems(focus, items, true);
   globalThis.EachVeyaSkills = { skills, decorateEquation };
 })();

@@ -224,5 +224,19 @@
     question.reviewedReadingEvidence = selected;
   }
 
-  globalThis.EachVeyaQuestionVersions = { version: 6 };
+  revise('b400-chemistry-amount-concentration-remaining-volume-L5-limit', {
+    prompt: bilingual('甲、乙两份溶液的总体积都变为原来的 80%，溶质各自保持完全溶解且物质的量不变。甲起初的浓度较高，最终哪份溶液的浓度较高？',
+      'The total volume of each solution falls to 80% of its starting value. In each, the solute remains fully dissolved and its amount stays the same. A starts more concentrated than B. Which is more concentrated at the end?'),
+    explanation: bilingual('两份溶液的物质的量各自不变，体积都乘 0.8。浓度 c = n/V，因此两者的原浓度都乘 1/0.8 = 1.25，甲仍较浓。',
+      'Each solution keeps the same amount of solute, and both volumes are multiplied by 0.8. Since c = n/V, both concentrations are multiplied by 1/0.8 = 1.25. A remains more concentrated.')
+  });
+
+  revise('b400-biology-population-density-mean-quadrats-L5-limit', {
+    prompt: bilingual('同一区域中两个面积相等的样方，记录到同一种植物的株数相等。这能证明整个区域的密度都相同吗？',
+      'Two equal-area quadrats in the same area have the same count of a plant species. Does this prove the density is the same throughout the area?'),
+    explanation: bilingual('两个等面积样方的株数相等，说明这两个样方的计数密度相同。其他位置的密度仍可能不同。',
+      'Equal counts over equal areas give the same sampled density in these two quadrats. Density may still differ elsewhere.')
+  });
+
+  globalThis.EachVeyaQuestionVersions = { version: 7 };
 })();

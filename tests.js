@@ -988,7 +988,8 @@
     const wrong = answerCurrent(start({ ids: ['ma-a01'], count: 1 }), false, knownTime);
     const algebra = Coach.roadmap(wrong, questions, 'math', now).find(row => row.id === 'algebra');
     equal([algebra.parent, algebra.seen, algebra.verified], ['arithmetic', 1, 0]);
-    equal(Coach.prerequisiteTrail('distribution', { coefficient: { status: 'possible' }, balance: { status: 'unassessed' } }), ['coefficient']);
+    equal(Coach.prerequisiteTrail('distribution', { coefficient: { status: 'possible' }, balance: { status: 'unassessed' } }), []);
+    equal(Coach.prerequisiteTrail('distribution', { coefficient: { status: 'confirmed' }, balance: { status: 'unassessed' } }), ['coefficient']);
     equal(Coach.prerequisiteTrail('distribution', { coefficient: { status: 'verified' }, balance: { status: 'scheduled' } }), []);
   });
 
@@ -2682,6 +2683,64 @@
     assert(element('#coach-reply').textContent.includes('已包含停留'));
     click('[data-action="coach-reset"]');
     assert(element('.coach-dialogue').textContent.includes('第 1 步'));
+    await resetUi();
+  });
+
+  await test('科学辅导能独立测试前置知识，两道一致的错误才建议补练', async () => {
+    const focus = 'forces-motion';
+    const assessed = Core.createState();
+    const profiles = Coach.assessment(assessed, questions);
+    const expected = {
+      'forces-motion': ['8 N east', '0 N'], 'wave-behaviour': ['4 Hz', '0.5 s'],
+      'thermal-models': ['12 J', '3 K'], 'fluid-models': ['6 Pa', 'It becomes one third as large'],
+      'atomic-structure': ['Electrons', '10'], 'equation-models': ['8', '9'],
+      'mole-calculations': ['2 mol', 'Smaller'], 'acid-base-models': ['10 times', '100 times'],
+      'cell-transport': ['5', '0'], 'plant-energy': ['7', '0'],
+      'human-systems': ['2100 mL', '4000 mL'], 'natural-selection': ['A', 'It decreased']
+    };
+    for (const [topic, answers] of Object.entries(expected)) {
+      const ids = Coach.focusIds(assessed, topic, 'probe', 2, profiles[topic]);
+      equal(ids.length, 2);
+      equal(ids.map(id => byId.get(id).options[byId.get(id).answer].en), answers);
+      assert(ids.every(id => byId.get(id).focusOnly && byId.get(id).errors[0] === topic));
+    }
+    const initialIds = Coach.focusIds(assessed, focus, 'probe', 2, profiles[focus]);
+    const mixed = start({ subject: 'physics', ids: initialIds, count: 2, mode: 'probe', focus }, assessed);
+    const oneWrong = Core.advanceSession(Core.gradeAnswer(mixed, questions, 0, knownTime), questions, knownTime);
+    const mixedResult = Core.advanceSession(answerCurrent(oneWrong, true), questions, knownTime);
+    equal(Coach.assessment(mixedResult, questions)[focus].status, 'possible');
+    equal(Coach.prerequisiteTrail('fluid-models', Coach.assessment(mixedResult, questions)), []);
+    const clean = Core.advanceSession(answerCurrent(mixed, true), questions, knownTime);
+    const cleanResult = Core.advanceSession(answerCurrent(clean, true), questions, knownTime);
+    equal(Coach.assessment(cleanResult, questions)[focus].status, 'foundation-checked');
+    equal(Learning.subjectProfile(cleanResult, 'physics')[focus].basis, 'starting');
+    await resetUi();
+    await go('coach/fluid-models', '[data-focus="forces-motion"][data-mode="probe"]');
+    assert(element('.study-skill-list').textContent.includes('尚未测评'));
+    click('[data-focus="forces-motion"][data-mode="probe"]');
+    await waitElement('#question-title');
+    assert(current().id.startsWith('foundation-forces-motion'));
+    click('[data-action="choose"][data-choice="0"]');
+    click('[data-action="grade"]');
+    assert(!document.querySelector('.feedback .answer-line'));
+    equal(Coach.assessment(read(), questions)[focus].status, 'unassessed');
+    click('[data-action="next"]');
+    click('[data-action="choose"][data-choice="0"]');
+    click('[data-action="grade"]');
+    click('[data-action="next"]');
+    await waitElement('.focus-result');
+    equal(Coach.assessment(Backup.parse(Backup.serialize(read()), questions), questions)[focus].status, 'confirmed');
+    await go('coach/fluid-models', '.coach-trail');
+    assert(element('.coach-trail a[href="#coach/forces-motion"]'));
+    assert(!document.querySelector('[data-focus="forces-motion"][data-mode="probe"]'));
+    await go('coach/forces-motion', '[data-focus="forces-motion"][data-mode="retake"]');
+    click('[data-focus="forces-motion"][data-mode="retake"]');
+    await waitElement('#question-title');
+    assert(current().id.startsWith('foundation-transfer-forces-motion'));
+    await finishQuestions(() => true);
+    equal(Coach.assessment(read(), questions)[focus].status, 'foundation-checked');
+    equal(Coach.prerequisiteTrail('fluid-models', Coach.assessment(read(), questions)), []);
+    equal(Learning.subjectProfile(read(), 'physics')[focus].retained, null);
     await resetUi();
   });
 

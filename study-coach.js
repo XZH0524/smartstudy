@@ -115,7 +115,8 @@
           const rows = checks.get(attempt.sessionId) || [];
           rows.push({ fresh: fresh && freshPassage && (!shape || freshEquation), correct: attempt.correct, independent: attempt.hinted === false, likely,
             error: question.errorKinds?.[attempt.choice] || likely, level: question.level,
-            equationCheck: question.purpose === 'equation-check', shape });
+            equationCheck: question.purpose === 'equation-check',
+            foundation: question.role === 'prerequisite-check' || question.role === 'prerequisite-transfer', shape });
           checks.set(attempt.sessionId, rows);
         }
         continue;
@@ -140,7 +141,18 @@
       const wrong = rows.filter(row => !row.correct).length;
       const verified = independent === rows.length && (session.mode === 'spaced' ? rows.length >= 1 : rows.length >= 2);
       entry.lastCheck = { day, answered: rows.length, independent, repeatedSignal, verified, mode: session.mode };
-      if (Science.topics[session.focus]) entry.level = rows[0].level;
+      const foundation = rows.every(row => row.foundation);
+      if (Science.topics[session.focus] && !foundation) entry.level = rows[0].level;
+      if (foundation && verified) {
+        const cleared = (entry.status === 'confirmed' && session.mode === 'retake')
+          || (['unassessed', 'possible'].includes(entry.status) && !entry.lastQuestion);
+        if (cleared) {
+          entry.status = 'foundation-checked';
+          entry.pendingSince = '';
+          entry.due = '';
+        }
+        continue;
+      }
       if (verified) {
         if (!entry.due || entry.due <= day || entry.interval === 0) {
           const index = intervals.indexOf(entry.interval);
@@ -151,6 +163,7 @@
         entry.pendingSince = '';
       } else if (wrong) {
         entry.status = repeatedSignal >= 2 || entry.status === 'confirmed' ? 'confirmed' : 'possible';
+        if (repeatedSignal >= 2 && foundation) entry.error = signals[0];
         entry.due = day;
         entry.interval = 0;
         entry.pendingSince ||= day;
@@ -180,6 +193,16 @@
     if (Science.topics[focus]) {
       const topic = Science.topics[focus];
       const level = record?.level || record?.lessonLevel || Learning.subjectProfile(state, topic.subject)[focus].level;
+      if (mode === 'retake' && record?.status === 'confirmed' && record.error) {
+        const checks = questions.filter(question => !question.retired && question.topic === focus && question.role === 'prerequisite-transfer'
+          && Object.values(question.errorKinds).includes(record.error) && !used.has(question.id));
+        if (checks.length === count) return checks.map(question => question.id);
+      }
+      if (mode === 'probe' && (record?.status === 'unassessed' || !topic.denominator)) {
+        const checks = questions.filter(question => !question.retired && question.topic === focus
+          && question.role === 'prerequisite-check' && !used.has(question.id));
+        if (checks.length >= count) return checks.slice(0, count).map(question => question.id);
+      }
       const role = mode === 'probe' ? 'probe' : 'transfer';
       const options = questions.filter(question => !question.retired && question.topic === focus && question.level === level
         && question.role === role && !used.has(question.id));
@@ -315,7 +338,7 @@
         if (visited.has(previous)) continue;
         visited.add(previous);
         visit(previous);
-        if (['possible', 'confirmed'].includes(profile[previous]?.status)) trail.push(previous);
+        if (profile[previous]?.status === 'confirmed') trail.push(previous);
       }
     }
     visit(focus);

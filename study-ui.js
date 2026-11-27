@@ -275,6 +275,10 @@
     coachRule: ['查看规则与例题', 'See the rule and a worked example'],
     coachPrerequisites: ['相关基础步骤', 'Related prerequisite skills'],
     coachTrace: ['作答记录提示可先复习', 'Your answers suggest reviewing these first'],
+    coachCheckFoundation: ['检查这项基础', 'Check this prerequisite'],
+    coachFoundationInsufficient: ['已有线索，需要新题确认。', 'There is a clue. Fresh questions are needed to check it.'],
+    coachFocusFoundation: ['这里先检查这个知识点的基础步骤。', 'These questions check the basic skills for this topic.'],
+    coachFoundationChecked: ['两道基础题已独立答对', 'Both prerequisite questions were correct without hints'],
     coachSuggestion: ['选项提示可能卡在「{skill}」。用两道新题进一步确认。', 'This choice may point to difficulty with “{skill}”. Check it on two new questions.'],
     coachAmbiguous: ['这道题的选项不足以判断错因。可以先看解析，再练同一知识点。', 'This answer does not pinpoint a cause. Read the explanation, then try the same topic again.'],
     coachJump: ['看分步辅导', 'Open guided practice'],
@@ -393,7 +397,8 @@
 
   function create({ t, text, escapeHtml, button, heading, subjectName, selectField, locale, language }) {
     const sectionStatus = {
-      unassessed: 'coachUntested', possible: 'coachPossible', confirmed: 'coachConfirmed', verified: 'coachVerified', scheduled: 'coachScheduled'
+      unassessed: 'coachUntested', possible: 'coachPossible', confirmed: 'coachConfirmed',
+      verified: 'coachVerified', scheduled: 'coachScheduled', 'foundation-checked': 'coachFoundationChecked'
     };
     const coachUrl = id => '#coach/' + id;
     const statusKey = record => record.equationLevel && record.status === 'confirmed' ? 'coachEquationConfirmed' : sectionStatus[record.status];
@@ -467,8 +472,11 @@
       const trail = Coach.prerequisiteTrail(focus, profile);
       const prerequisites = skill.prerequisites.filter(id => !trail.includes(id));
       const modes = ['verified', 'scheduled'].includes(record.status) ? ['spaced', 'retake'] : record.status === 'confirmed' ? ['retake'] : ['probe', 'retake'];
-      const ready = modes.filter(mode => (mode !== 'spaced' || (record.due && record.due <= Core.localDate(new Date())))
-        && Coach.focusIds(state, focus, mode, undefined, record).length);
+      const ready = modes.flatMap(mode => {
+        if (mode === 'spaced' && (!record.due || record.due > Core.localDate(new Date()))) return [];
+        const ids = Coach.focusIds(state, focus, mode, undefined, record);
+        return ids.length ? [{ mode, foundation: ids[0].startsWith('foundation-') }] : [];
+      });
       return `${heading(text(skill.label), t('coachIntro'))}
         <div class="study-grid">
           <section class="panel study-panel" aria-labelledby="guide-title">
@@ -479,15 +487,20 @@
             <details class="study-details"><summary>${t('coachRule')}</summary><p>${text(skill.principle)}</p><p class="worked-example">${text(skill.example)}</p></details>
             ${skill.source ? `<p class="field-help"><a href="${escapeHtml(skill.source)}" target="_blank" rel="noopener noreferrer">${t('scienceSource')}</a></p>` : ''}
             ${trail.length ? `<h3>${t('coachTrace')}</h3><ol class="coach-trail">${trail.map(id => `<li>${linkToCoach(id)}</li>`).join('')}</ol>` : ''}
-            ${prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><ul class="study-skill-list">${prerequisites.map(id =>
-              `<li>${linkToCoach(id)} <span class="field-help">${t(statusKey(profile[id]))}</span></li>`).join('')}</ul>` : ''}
+            ${prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><ul class="study-skill-list">${prerequisites.map(id => {
+              const previous = profile[id];
+              const canCheck = ['unassessed', 'possible'].includes(previous.status) && Coach.focusIds(state, id, 'probe', 2, previous).length === 2;
+              return `<li>${linkToCoach(id)} <span class="field-help">${t(previous.status === 'possible' ? 'coachFoundationInsufficient' : statusKey(previous))}</span>
+                ${canCheck ? button(t('coachCheckFoundation'), 'focus-practice', 'secondary', `data-mode="probe" data-focus="${id}"`) : ''}</li>`;
+            }).join('')}</ul>` : ''}
           </section>
           <section class="panel study-panel" aria-labelledby="skill-check-title">
             <h2 id="skill-check-title">${t(statusKey(record))}</h2>
             ${record.equationLevel ? `<p>${t('coachEquationEvidence', { n: record.equationEvidence })}</p>` : ''}
             ${record.lastCheck ? `<p>${t('coachCheckSummary', record.lastCheck)}</p>` : ''}
             ${record.due ? `<p class="section-note">${record.due <= Core.localDate(new Date()) ? t('coachDueNow') : t('coachDue', { date: formatDate(record.due) })}</p>` : ''}
-            <div class="study-actions">${ready.map(mode => button(t(mode), 'focus-practice', mode === ready[0] ? '' : 'secondary', `data-mode="${mode}" data-focus="${focus}"`)).join('')}</div>
+            ${ready.some(item => item.foundation) ? `<p class="field-help">${t('coachFocusFoundation')}</p>` : ''}
+            <div class="study-actions">${ready.map(({ mode }, index) => button(t(mode), 'focus-practice', index === 0 ? '' : 'secondary', `data-mode="${mode}" data-focus="${focus}"`)).join('')}</div>
             ${ready.length ? '' : `<p>${t('coachEmpty')}</p>${button(t('coachBankFallback'), 'topic-practice', 'secondary', `data-subject="${skill.subject}" data-topic="${skill.topic}"`)}`}
           </section>
         </div>`;

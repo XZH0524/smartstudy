@@ -32,7 +32,7 @@
   const availableQuestions = new Set(data?.questions?.filter(question => !question.retired).map(question => question.id));
   const completePilots = typeof Pilot?.stepResults === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || Pilot.routes[id]?.stages.every(stage => stage.items.every(item => availableQuestions.has(item.questionId))));
-  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 6
+  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 7
     || Core?.VERSION !== 10 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.changeTaskDate
     || !StudyUI?.hasDialogue || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, Backup, schoolPractice].some(component => !component)) {
     document.getElementById('language').disabled = true;
@@ -1759,7 +1759,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.32';
+    script.src = 'tests.js?v=2.33';
     document.body.appendChild(script);
   }
 })();
