@@ -2685,6 +2685,37 @@
     await resetUi();
   });
 
+  await test('练习可查看难度示例，英语阅读提交后显示对应原文', async () => {
+    await resetUi();
+    await openSubject('physics');
+    assert(element('.level-guide summary').textContent.includes('每个等级练什么'));
+    equal(document.querySelectorAll('.level-guide dt').length, 5);
+    change('difficulty', 'L4');
+    assert(element('.level-guide [aria-current="true"]').textContent.includes('分别计算'));
+    element('.level-guide').open = true;
+    fitsViewport();
+    await openSubject('english');
+    equal(document.querySelectorAll('.level-guide dt').length, 6);
+    change('language', 'en');
+    assert(element('.level-guide summary').textContent.includes('What does each level practise'));
+    const question = byId.get('b400-english-r-opening-hours-4@2');
+    const retired = byId.get(question.originalId);
+    assert(retired.retired && !question.retired);
+    const session = start({ subject: 'english', ids: [question.id], count: 1 });
+    Core.saveState(localStorage, key, { ...session, language: 'en' });
+    replayStorage(key);
+    click('[data-action="resume"]');
+    await waitElement('#question-title');
+    assert(!document.querySelector('.feedback q'));
+    await answerUi(true);
+    equal([...element('.feedback').querySelectorAll('q')].map(quote => quote.textContent), question.reviewedReadingEvidence);
+    assert(question.reviewedReadingEvidence.length === 2 && question.reviewedReadingEvidence[0].includes('last buses'));
+    const coach = globalThis.EachVeyaSkills.skills;
+    assert(coach['mole-calculations'].prerequisites.includes('atomic-structure'));
+    assert(coach['fluid-models'].prerequisites.includes('forces-motion'));
+    await resetUi();
+  });
+
   await test('首页可直接做每日任务，进度点随作答更新，五科路线可打开对应知识点', async () => {
     await resetUi();
     equal(element('.hero .daily-dots').getAttribute('aria-valuenow'), '0');

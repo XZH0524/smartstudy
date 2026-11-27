@@ -273,8 +273,8 @@
     coachDialogReset: ['从第一步重来', 'Start again'],
     coachHelp: ['查看这一步的提示', 'Get a hint for this step'],
     coachRule: ['查看规则与例题', 'See the rule and a worked example'],
-    coachPrerequisites: ['先复习这些基础步骤', 'Review these prerequisite skills'],
-    coachTrace: ['记录提示先补这些步骤', 'Your answers suggest revisiting these steps first'],
+    coachPrerequisites: ['相关基础步骤', 'Related prerequisite skills'],
+    coachTrace: ['作答记录提示可先复习', 'Your answers suggest reviewing these first'],
     coachSuggestion: ['选项提示可能卡在「{skill}」。用两道新题进一步确认。', 'This choice may point to difficulty with “{skill}”. Check it on two new questions.'],
     coachAmbiguous: ['这道题的选项不足以判断错因。可以先看解析，再练同一知识点。', 'This answer does not pinpoint a cause. Read the explanation, then try the same topic again.'],
     coachJump: ['看分步辅导', 'Open guided practice'],
@@ -403,7 +403,8 @@
     }
 
     function renderEvidence(question) {
-      return question.evidenceQuote ? `<p><strong>${t('originalEvidence')}</strong> <q lang="en">${escapeHtml(question.evidenceQuote)}</q></p>` : '';
+      const quotes = question.reviewedReadingEvidence || (question.evidenceQuote ? [question.evidenceQuote] : []);
+      return quotes.length ? `<p><strong>${t('originalEvidence')}</strong> ${quotes.map(quote => `<q lang="en">${escapeHtml(quote)}</q>`).join(' ')}</p>` : '';
     }
 
     function renderClue(question, attempt, nextDay = []) {
@@ -464,6 +465,7 @@
       const skill = skills[focus];
       const record = profile[focus];
       const trail = Coach.prerequisiteTrail(focus, profile);
+      const prerequisites = skill.prerequisites.filter(id => !trail.includes(id));
       const modes = ['verified', 'scheduled'].includes(record.status) ? ['spaced', 'retake'] : record.status === 'confirmed' ? ['retake'] : ['probe', 'retake'];
       const ready = modes.filter(mode => (mode !== 'spaced' || (record.due && record.due <= Core.localDate(new Date())))
         && Coach.focusIds(state, focus, mode, undefined, record).length);
@@ -476,8 +478,9 @@
             <details class="study-details"><summary>${t('coachHelp')}</summary><p>${text(skill.notice)}</p></details>
             <details class="study-details"><summary>${t('coachRule')}</summary><p>${text(skill.principle)}</p><p class="worked-example">${text(skill.example)}</p></details>
             ${skill.source ? `<p class="field-help"><a href="${escapeHtml(skill.source)}" target="_blank" rel="noopener noreferrer">${t('scienceSource')}</a></p>` : ''}
-            ${trail.length ? `<h3>${t('coachTrace')}</h3><ol class="coach-trail">${trail.map(id => `<li>${linkToCoach(id)}</li>`).join('')}</ol>`
-              : skill.prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><div class="study-actions">${skill.prerequisites.map(id => linkToCoach(id)).join('')}</div>` : ''}
+            ${trail.length ? `<h3>${t('coachTrace')}</h3><ol class="coach-trail">${trail.map(id => `<li>${linkToCoach(id)}</li>`).join('')}</ol>` : ''}
+            ${prerequisites.length ? `<h3>${t('coachPrerequisites')}</h3><ul class="study-skill-list">${prerequisites.map(id =>
+              `<li>${linkToCoach(id)} <span class="field-help">${t(statusKey(profile[id]))}</span></li>`).join('')}</ul>` : ''}
           </section>
           <section class="panel study-panel" aria-labelledby="skill-check-title">
             <h2 id="skill-check-title">${t(statusKey(record))}</h2>

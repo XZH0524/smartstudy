@@ -32,7 +32,7 @@
   const availableQuestions = new Set(data?.questions?.filter(question => !question.retired).map(question => question.id));
   const completePilots = typeof Pilot?.stepResults === 'function' && data?.subjects?.every(({ id, available }) =>
     !available || Pilot.routes[id]?.stages.every(stage => stage.items.every(item => availableQuestions.has(item.questionId))));
-  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 5
+  if (!completeBank || !completeWorkshops || !completePilots || QuestionVersions?.version !== 6
     || Core?.VERSION !== 10 || !Core?.equationStructure || !Core?.readingPassage || !Coach?.changeTaskDate
     || !StudyUI?.hasDialogue || !AI?.ROUND_FORMATS || [Learning, Science, focusSkills, Backup, schoolPractice].some(component => !component)) {
     document.getElementById('language').disabled = true;
@@ -89,6 +89,10 @@
     questionCount: ['{n} 题', '{n} questions'], allQuestions: ['全部匹配题目', 'All matching questions'],
     setupInfo: ['当前匹配 {n} 道，本次练习 {count} 道。优先安排没做过的题，并轮换题型和情境。', '{n} questions match. This set includes {count}, with untried questions and varied tasks first.'],
     mathScale: ['题目难度按知识点分别推荐。掌握情况以作答证据为准。', 'Practice difficulty is suggested per topic. Mastery depends on the available evidence.'],
+    levelGuide: ['每个等级练什么？', 'What does each level practise?'],
+    levelGuideMath: ['举例用代数说明。其他知识点会考相似的思考步骤。', 'These algebra examples show the steps used at each level. Other topics use comparable steps.'],
+    levelGuideScience: ['以本站题库为例。等级描述题目要求，掌握情况以作答和复测为准。', 'These examples describe tasks in this bank. Your answers and later checks inform mastery.'],
+    levelGuideEnglish: ['这些例子说明本站如何编排词汇、语法和阅读。', 'These examples describe how this bank orders vocabulary, grammar and reading practice.'],
     scienceScope: ['课程范围', 'Curriculum scope'], generalScience: ['通用科学', 'General science'],
     scopePlanned: ['{course} 专项课程映射待审核。请选择通用科学使用现有题目。', '{course} curriculum mapping is awaiting review. Select General science to use the current bank.'],
     sciencePlacementInfo: ['三个核心知识点各两题，共 {n} 道。其他知识点会根据后续练习积累证据。', 'Two questions on each of three core topics, {n} in total. Other topics build evidence through practice.'],
@@ -774,6 +778,40 @@
     </section>`;
   }
 
+  function renderLevelGuide(subject, selected) {
+    const examples = {
+      math: [
+        ['认出基本关系，例如用减法还原 x + 5 = 12。', 'Recognise a basic relationship, such as undoing addition in x + 5 = 12.'],
+        ['按顺序做两步，例如先减 4，再解 3x + 4 = 25。', 'Carry out two steps, such as subtracting 4 before solving 3x + 4 = 25.'],
+        ['把描述变成方程，例如根据两种票价和总价求数量。', 'Turn a situation into an equation, such as finding ticket quantities from prices and a total.'],
+        ['合用两个条件，例如从周长和面积求长方形的边。', 'Combine two conditions, such as a rectangle’s perimeter and area, to find a side.'],
+        ['判断解的范围或边界，例如找出哪些 x 能让两个因子的乘积不大于 0。', 'Reason about a range or boundary, such as when the product of two factors is at most zero.']
+      ],
+      science: [
+        ['辨认所测的量和单位，例如时间用秒表示。', 'Identify a measurement and its unit, such as time in seconds.'],
+        ['判断改变一个条件会怎样，例如同样路程用时更长，平均速率会怎样。', 'Predict the effect of one change, such as longer travel time over the same distance.'],
+        ['代入或反推一个量，例如根据路程和总时间算平均速率。', 'Calculate or recover a quantity, such as speed from distance and elapsed time.'],
+        ['分别计算后比较两组记录，说明差值代表什么。', 'Work out two records, then compare them and interpret the difference.'],
+        ['用不同记录检验模型，或判断数据能支持哪个结论。', 'Use another record to test a model, or judge which conclusion the data support.']
+      ],
+      english: [
+        ['理解短通知、日常词语和简单句。', 'Read short notices and practise everyday words and simple sentences.'],
+        ['读懂日程或邮件，练习过去时、比较和礼貌请求。', 'Read schedules or emails and practise past events, comparisons and polite requests.'],
+        ['联系上下文理解原因，练习条件句、间接问句和段落主旨。', 'Use context to identify reasons and main ideas, and practise conditions and indirect questions.'],
+        ['从段落推断作者意图，练习虚拟条件、连接词和较细的词义差别。', 'Infer a purpose from a passage and practise hypothetical conditions, connectives and finer distinctions.'],
+        ['辨认保留意见、隐含立场及较正式的表达。', 'Recognise reservations, implied positions and more formal expressions.'],
+        ['比较细微含义，判断作者在什么条件下支持某个说法。', 'Compare subtle meanings and identify the conditions under which a claim is supported.']
+      ]
+    };
+    const key = subject === 'math' || subject === 'english' ? subject : 'science';
+    return `<details class="study-details level-guide"><summary>${t('levelGuide')}</summary>
+      <p class="field-help">${t(key === 'math' ? 'levelGuideMath' : key === 'english' ? 'levelGuideEnglish' : 'levelGuideScience')}</p>
+      <dl class="study-skill-list">${levels[subject].map((level, index) => `<div ${selected === level ? 'aria-current="true"' : ''}>
+        <dt><strong>${level}${key !== 'english' ? ' · ' + text(tierLabels[level]) : ''}</strong></dt>
+        <dd>${escapeHtml(examples[key][index][state.language === 'zh' ? 0 : 1])}</dd></div>`).join('')}</dl>
+    </details>`;
+  }
+
   function renderSetup() {
     const { subject, topic, level, count, track, curriculum = '', format = 'choice' } = setup;
     const math = subject === 'math';
@@ -825,6 +863,7 @@
             ${selectField('count', t('count'), countOptions, count)}
           </div>
           <p class="field-help">${t(english ? 'cefrScope' : 'mathScale')}</p>
+          ${renderLevelGuide(subject, level)}
           <p class="setup-info" id="setup-info" role="status">${pool.length
             ? t('setupInfo', { n: pool.length, count: number })
             : science && curriculum ? t('scopePlanned', { course: curricula.find(course => course.id === curriculum)?.label[state.language] || curriculum }) : t('emptyMatch')}</p>
@@ -1720,7 +1759,7 @@
   }
   if (testing) {
     const script = document.createElement('script');
-    script.src = 'tests.js?v=2.31';
+    script.src = 'tests.js?v=2.32';
     document.body.appendChild(script);
   }
 })();

@@ -1861,6 +1861,13 @@ dialog p {
 .today-plan .study-details summary {
   font-size:.88rem;
 }
+.level-guide dd {
+  color:var(--muted);
+  margin:0 0 8px;
+}
+.level-guide [aria-current="true"] dt {
+  color:var(--green);
+}
 .today-plan .study-details .study-actions, .plan-settings form {
   margin-top:14px;
 }

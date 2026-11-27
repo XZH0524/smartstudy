@@ -158,5 +158,71 @@
     }
   }
 
-  globalThis.EachVeyaQuestionVersions = { version: 5 };
+  function reviseReading(slug, zh, en, explanation, options) {
+    const id = 'b400-english-r-' + slug;
+    const original = ids.get(id);
+    const passage = original.prompt.en.split('\n\n')[0];
+    revise(id, {
+      prompt: bilingual(passage + '\n\n' + zh, passage + '\n\n' + en),
+      explanation, ...(options ? { options } : {})
+    });
+  }
+
+  reviseReading('weather-record-2',
+    '两台仪器放在室内同一位置时读数一致。哪一种解释因此最站不住脚？',
+    'The instruments agree when placed together indoors. Which explanation is therefore least convincing?',
+    bilingual('两台仪器在同一位置读数一致，因此「两台仪器不论放在哪里，总给出不同的读数」最站不住脚。',
+      'They agree when placed together, so the claim that the instruments always disagree is least convincing.'));
+  reviseReading('opening-hours-4',
+    '有人把最初来访人数少当成需求不足。下面哪项说法就是这类过度推断？',
+    'Which conclusion overinterprets the low initial visitor counts as a lack of demand?',
+    bilingual('末班车在闭馆前就已开走。交通条件可能影响来访人数，单凭客流不足以判断读者没有需求。',
+      'The last bus left before closing. Travel can affect attendance, so low turnout alone cannot establish a lack of demand.'));
+  reviseReading('translation-choice-2',
+    '把 house 换成 palace 能让哪一点更清楚，又会丢掉什么？',
+    'Using “palace” would make what clearer, and what would it lose?',
+    bilingual('palace 更准确地传达建筑的规模，但失去了人物刻意用普通词、把事情说小一点的语气。',
+      '“Palace” makes the scale of the building clearer but loses the character’s deliberate understatement.'),
+    ids.get('b400-english-r-translation-choice-2').options.map((option, index) => index === 0
+      ? bilingual('建筑规模更清楚，但人物刻意低调的语气消失了', 'The building’s scale becomes clearer, but the deliberate understatement is lost')
+      : option));
+
+  // Indices name the sentences that support each answer. Multiple sentences
+  // are paired when the answer needs a comparison or a conclusion.
+  const readingEvidence = {
+    'lost-cap': [[0], [1], [2], [3]],
+    'week-plan': [[0], [1], [2], [3]],
+    'blue-route': [[0], [1], [2], [3]],
+    'library-card': [[1], [2], [3, 4], [5]],
+    'bike-desk': [[0], [1], [2], [4]],
+    'meeting-rain': [[0], [1], [3], [4]],
+    'menu-board': [[0], [1, 2], [3], [4]],
+    postcard: [[0], [2, 3], [4], [4]],
+    'repair-table': [[0, 1], [2], [3, 4], [4]],
+    'tree-map': [[1], [2], [3], [3, 4]],
+    'hall-rules': [[0, 1], [2], [3], [3]],
+    'campus-route': [[0], [1], [2], [3, 4]],
+    'school-start': [[0, 1, 2], [2], [3], [0, 2]],
+    'caption-cost': [[1], [2], [3], [2, 3]],
+    'weather-record': [[1], [2], [3], [1, 3]],
+    'opening-hours': [[1], [2], [2, 3], [1, 3]],
+    minutes: [[0, 2], [3], [2, 4], [4]],
+    'water-model': [[0, 1], [2], [0, 3], [2, 3]],
+    'translation-choice': [[0, 1], [1, 2], [3], [0, 1, 2]],
+    'archive-silence': [[1], [4], [4, 5], [2, 4]],
+    'pilot-sunset': [[0, 1], [1], [2], [2, 3]],
+    'clock-room': [[0, 2], [1, 3, 4], [3, 4], [2, 3, 4]]
+  };
+  for (const question of questions) {
+    if (question.retired) continue;
+    const match = question.id.match(/^b400-english-r-(.+)-([1-4])(?:@\d+)?$/u);
+    if (!match) continue;
+    const article = question.prompt.en.split('\n\n')[0];
+    const sentences = article.split(/(?<=[.!?]) (?=[A-Z])/u);
+    const selected = readingEvidence[match[1]][Number(match[2]) - 1].map(index => sentences[index]);
+    if (selected.some(sentence => !sentence)) throw new Error('Missing reading evidence ' + question.id);
+    question.reviewedReadingEvidence = selected;
+  }
+
+  globalThis.EachVeyaQuestionVersions = { version: 6 };
 })();
